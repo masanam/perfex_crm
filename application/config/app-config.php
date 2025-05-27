@@ -17,7 +17,7 @@ defined('BASEPATH') or exit('No direct script access allowed');
 * environments.
 *
 */
-define('APP_BASE_URL', 'http://localhost/perfex_crm/');
+define('APP_BASE_URL', 'https://crm.digivla.id');
 
 /*
 * --------------------------------------------------------------------------
@@ -48,7 +48,7 @@ define('APP_DB_USERNAME', 'root');
 /**
  * The password used to connect to the database
  */
-define('APP_DB_PASSWORD', '');
+define('APP_DB_PASSWORD', 'Digivla2025');
 
 /**
  * The name of the database you want to connect to
