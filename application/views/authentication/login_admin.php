@@ -5,7 +5,10 @@
 
     <div class="tw-max-w-md tw-mx-auto tw-pt-24 authentication-form-wrapper tw-relative tw-z-20">
         <div class="company-logo text-center">
-            <?php get_dark_company_logo(); ?>
+            <?php //get_dark_company_logo(); ?>
+            <a href="<?php echo base_url('/'); ?>" class="logo img-responsive">
+                <img src="<?php echo base_url('uploads/company/logo-black.png'.$favicon); ?>" class="img-responsive" alt="Digivla Indonesia">
+            </a>
         </div>
 
         <h1 class="tw-text-2xl tw-text-neutral-800 text-center tw-font-semibold tw-mb-5">
