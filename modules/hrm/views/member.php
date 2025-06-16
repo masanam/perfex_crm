@@ -135,13 +135,13 @@
                      </div>
                      <?php } ?>
                      <div class="row">
-                     <?php $value = (isset($member) ? $member->firstname : ''); ?>
+                     <?php $value = (isset($member) ? $member->firstname.' '.$member->lastname : ''); ?>
                      <?php $attrs = (isset($member) ? array() : array('autofocus'=>true)); ?>
                          <div class="col-md-4">
                           <?php  $hr_codes = (isset($member) ? $member->staff_identifi : ''); ?>
                           <div class="form-group" app-field-wrapper="staff_identifi">
                             <label for="staff_identifi" class="control-label"><?php echo _l('hr_code'); ?></label>
-                            <input type="text" id="staff_identifi" name="staff_identifi" class="form-control" value="<?php echo htmlspecialchars($hr_codes); ?>" aria-invalid="false" <?php if(!is_admin() && !hrm_permissions('hrm','', 'edit')){ echo 'disabled' ; }  ?>>
+                            <input type="text" id="staff_identifi" name="staff_identifi" class="form-control" value="<?php echo htmlspecialchars($member->staffid); ?>" aria-invalid="false" <?php if(!is_admin() && !hrm_permissions('hrm','', 'edit')){ echo 'disabled' ; }  ?>>
                           </div>
                          </div>   
                          <div class="col-md-4">
