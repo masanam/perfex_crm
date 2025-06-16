@@ -148,7 +148,7 @@ function appointly_register_menu_items()
             'name'     => 'appointly_module_name',
             'href'     => admin_url('appointly/appointments'),
             'position' => 10,
-            'icon'     => 'fa fa-calendar-check-o',
+            'icon'     => 'fa-solid fa-calendar-days',
         ]);
 
         $CI->app_menu->add_sidebar_children_item(APPOINTLY_MODULE_NAME, [
