@@ -196,7 +196,7 @@ function file_sharing_module_init_menu_items()
     $CI->app_menu->add_sidebar_children_item('FILE_SHARING', [
         'slug'     => 'file_sharing_sharings',
         'name'     => _l('sharing'),
-        'icon'     => 'fa fa-share-square-o',
+        'icon'     => 'fa fa-circle-dot',
         'href'     => admin_url('file_sharing/sharing'),
         'position' => 2,
     ]);

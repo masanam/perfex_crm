@@ -431,7 +431,7 @@ function ma_module_init_menu_items()
             $CI->app_menu->add_sidebar_children_item('ma', [
                 'slug' => 'ma-points',
                 'name' => _l('points'),
-                'icon' => 'fa fa-dot-circle-o',
+                'icon' => 'fa fa-circle-dot',
                 'href' => admin_url('ma/points?group=point_actions'),
                 'position' => 5,
             ]);
