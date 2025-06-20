@@ -18,5 +18,5 @@ yarn-error.log
 /.idea
 /.vscode
 /.docker
-/application/config/app-config.php
-/uploads/*
+application/config/app-config.php
+uploads/*
