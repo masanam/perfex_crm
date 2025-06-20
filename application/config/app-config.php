@@ -17,8 +17,8 @@ defined('BASEPATH') or exit('No direct script access allowed');
 * environments.
 *
 */
-define('APP_BASE_URL', 'http://localhost/perfex_crm');
-// define('APP_BASE_URL', 'https://erp.digivla.id');
+// define('APP_BASE_URL', 'http://localhost/perfex_crm');
+define('APP_BASE_URL', 'https://erp.digivla.id');
 
 
 /*
@@ -40,8 +40,8 @@ define('APP_ENC_KEY', '3de3f33db8199d986cfcd26ef15e6859');
  * Database Credentials
  * The hostname of your database server
  */
-// define('APP_DB_HOSTNAME', 'localhost');
-define('APP_DB_HOSTNAME', 'localhost:3308');
+define('APP_DB_HOSTNAME', 'localhost');
+// define('APP_DB_HOSTNAME', 'localhost:3308');
 
 
 /**
@@ -52,8 +52,8 @@ define('APP_DB_USERNAME', 'root');
 /**
  * The password used to connect to the database
  */
-// define('APP_DB_PASSWORD', 'Digivla2025');
-define('APP_DB_PASSWORD', '');
+define('APP_DB_PASSWORD', 'Digivla2025');
+// define('APP_DB_PASSWORD', '');
 
 
 /**
