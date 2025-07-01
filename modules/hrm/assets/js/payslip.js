@@ -1,4 +1,4 @@
-        function new_paysplit(){
+        function new_payslip(){
 		"use strict";
             $('#contract_type').modal('show');
             $('.edit-title').addClass('hide');
