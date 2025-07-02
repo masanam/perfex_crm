@@ -181,7 +181,8 @@ function app_init_admin_sidebar_menu_items()
         }
     }
 
-    if (is_staff_member()) {
+    // if (is_staff_member()) {
+    if ((staff_can('view',  'leads') || staff_can('view_own',  'leads'))) {
         $CI->app_menu->add_sidebar_menu_item('leads', [
             'name'     => _l('als_leads'),
             'href'     => admin_url('leads'),
