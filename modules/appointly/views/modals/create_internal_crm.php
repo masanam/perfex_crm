@@ -36,7 +36,14 @@
                             <div class="col-md-6" style="padding-right: 0;padding-left:10px;">
                                 <div class="form-group">
                                     <label for="address"><?= _l('appointment_meeting_location') . ' ' . _l('appointment_optional'); ?></label>
-                                    <input type="text" class="form-control" name="address" id="address">
+                                    <!-- <input type="text" class="form-control" name="address" id="address"> -->
+                                    <select class="form-control selectpicker" name="address" id="address">
+                                        <option value=""><?= _l('dropdown_non_selected_tex'); ?></option>
+                                        <option value="Lombok">Lombok</option>
+                                        <option value="Kuta">Kuta</option>
+                                        <option value="Sanur">Sanur</option>
+                                        <option value="Seminyak">Seminyak</option>
+                                    </select>
                                 </div>
                             </div>
                         </div>
