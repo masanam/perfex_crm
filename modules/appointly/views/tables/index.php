@@ -17,11 +17,12 @@ $sTable = db_prefix() . 'appointly_appointments';
 
 $where = [];
 
-if (!is_admin() && !staff_appointments_responsible()) {
-    array_push($where, 'AND (' . db_prefix() . 'appointly_appointments.created_by=' . get_staff_user_id() . ')
-    OR ' . db_prefix() . 'appointly_appointments.id
-    IN (SELECT appointment_id FROM ' . db_prefix() . 'appointly_attendees WHERE staff_id=' . get_staff_user_id() . ')');
-}
+// if (!is_admin() && !staff_appointments_responsible()) {
+//     array_push($where, 'AND (' . db_prefix() . 'appointly_appointments.created_by=' . get_staff_user_id() . ')
+//     OR ' . db_prefix() . 'appointly_appointments.id
+//     IN (SELECT appointment_id FROM ' . db_prefix() . 'appointly_attendees WHERE staff_id=' . get_staff_user_id() . ')');
+// }
+
 $filters = [];
 if ($this->ci->input->post('approved')) {
     $filters[] = 'AND approved = 1';

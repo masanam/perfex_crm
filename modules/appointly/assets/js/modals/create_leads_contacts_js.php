@@ -32,6 +32,20 @@
             "attendees[]": "Please select at least 1 staff member"
         });
 
+        appValidateForm($("#appointment-internal-crm-form"), {
+            subject: "required",
+            description: "required",
+            date: "required",
+            rel_type: "required",
+            'attendees[]': {
+                required: true,
+                minlength: 2
+            }
+        }, apply_appointments_form_data, {
+            'attendees[]': "Please select at least 1 staff member"
+        });
+
+
         function apply_appointments_form_data(form)
         {
             $("#appointment-leads-contacts-crm-form button[type=\"submit\"], button.close_btn").prop("disabled", true);

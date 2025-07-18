@@ -602,11 +602,11 @@ if (!function_exists('get_appointments_summary')) {
     {
         $CI = &get_instance();
 
-        if (!is_admin() && !staff_appointments_responsible()) {
-            $CI->db->where('(' . db_prefix() . 'appointly_appointments.created_by=' . get_staff_user_id() . ')
-        OR ' . db_prefix() . 'appointly_appointments.id
-        IN (SELECT appointment_id FROM ' . db_prefix() . 'appointly_attendees WHERE staff_id=' . get_staff_user_id() . ')');
-        }
+        // if (!is_admin() && !staff_appointments_responsible()) {
+        //     $CI->db->where('(' . db_prefix() . 'appointly_appointments.created_by=' . get_staff_user_id() . ')
+        // OR ' . db_prefix() . 'appointly_appointments.id
+        // IN (SELECT appointment_id FROM ' . db_prefix() . 'appointly_attendees WHERE staff_id=' . get_staff_user_id() . ')');
+        // }
 
         $appointments = $CI->db->get(db_prefix() . 'appointly_appointments')->result_array();
 

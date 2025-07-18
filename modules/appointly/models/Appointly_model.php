@@ -695,7 +695,7 @@ class Appointly_model extends App_Model
      */
     public function getCalendarData($start, $end, $data)
     {
-        if (staff_can('view', 'appointments') && staff_can('view_own', 'appointments') || is_admin()) {
+        // if (staff_can('view', 'appointments') && staff_can('view_own', 'appointments') || is_admin()) {
 
             $this->db->select('subject as title, date, hash, start_hour, id, type_id');
             $this->db->from(db_prefix() . 'appointly_appointments');
@@ -734,8 +734,8 @@ class Appointly_model extends App_Model
             }
 
             return $data;
-        }
-        return $data;
+        // }
+        // return $data;
     }
 
     /**

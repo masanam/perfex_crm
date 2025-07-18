@@ -126,7 +126,9 @@
         </div><!-- /.modal-content -->
     </div><!-- /.modal-dialog -->
 </div><!-- /.modal -->
-<?php require('modules/appointly/assets/js/modals/create_internal_crm_js.php'); ?>
+<?php //require('modules/appointly/assets/js/modals/create_internal_crm_js.php'); ?>
+<?php require('modules/appointly/assets/js/modals/create_leads_contacts_js.php'); ?>
+
 <script>
 
 </script>
