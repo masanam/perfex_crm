@@ -702,13 +702,13 @@ class Appointly_model extends App_Model
             $this->db->where('finished = 0 AND cancelled = 0');
 
 
-            if (!staff_appointments_responsible()) {
-                if (!is_client_logged_in()) {
-                    $this->db->where('id IN (SELECT appointment_id FROM ' . db_prefix() . 'appointly_attendees WHERE staff_id=' . get_staff_user_id() . ')');
-                } else {
-                    $this->db->where('id IN (SELECT appointment_id FROM ' . db_prefix() . 'appointly_attendees WHERE contact_id=' . get_contact_user_id() . ')');
-                }
-            }
+            // if (!staff_appointments_responsible()) {
+            //     if (!is_client_logged_in()) {
+            //         $this->db->where('id IN (SELECT appointment_id FROM ' . db_prefix() . 'appointly_attendees WHERE staff_id=' . get_staff_user_id() . ')');
+            //     } else {
+            //         $this->db->where('id IN (SELECT appointment_id FROM ' . db_prefix() . 'appointly_attendees WHERE contact_id=' . get_contact_user_id() . ')');
+            //     }
+            // }
 
 
             $this->db->where('(CONCAT(date, " ", start_hour) BETWEEN "' . $start . '" AND "' . $end . '")');

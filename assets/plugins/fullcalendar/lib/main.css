@@ -889,7 +889,7 @@ A HORIZONTAL event
   display: flex;
   align-items: center;
   padding: 2px 0;
-  background-color: lightblue !important;
+  background-color: lightblue;
 
 }
 .fc-daygrid-dot-event .fc-event-title {
