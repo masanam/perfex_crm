@@ -241,8 +241,8 @@ $html .= '<table width="100%" bgcolor="#fff" cellspacing="0" cellpadding="5" bor
 $html .= '<thead>';
 $html .= '<tr bgcolor="#323a45" style="color:#ffffff;">';
 $html .= '<th width="26.12%"><b>' . _l('tasks_dt_name') . '</b></th>';
-$html .= '<th width="12%"><b>' . _l('total_task_members_assigned') . '</b></th>';
-$html .= '<th width="12%"><b>' . _l('total_task_members_followers') . '</b></th>';
+$html .= '<th width="12%"><b>' . _l('task_assigned') . '</b></th>';
+$html .= '<th width="12%"><b>' . _l('task_single_followers') . '</b></th>';
 $html .= '<th width="9.28%"><b>' . _l('task_single_start_date') . '</b></th>';
 $html .= '<th width="9.28%"><b>' . _l('task_single_due_date') . '</b></th>';
 $html .= '<th width="7%"><b>' . _l('task_status') . '</b></th>';
@@ -254,8 +254,20 @@ $html .= '<tbody>';
 foreach ($tasks as $task) {
     $html .= '<tr style="color:#4a4a4a;">';
     $html .= '<td width="26.12%">' . $task['name'] . '</td>';
-    $html .= '<td width="12%">' . total_rows(db_prefix() . 'task_assigned', ['taskid' => $task['id']]) . '</td>';
-    $html .= '<td width="12%">' . total_rows(db_prefix() . 'task_followers', ['taskid' => $task['id']]) . '</td>';
+    // $html .= '<td width="12%">' . total_rows(db_prefix() . 'task_assigned', ['taskid' => $task['id']]) . '</td>';
+    // $html .= '<td width="12%">' . total_rows(db_prefix() . 'task_followers', ['taskid' => $task['id']]) . '</td>';
+    $assignees = $this->ci->tasks_model->get_task_assignees($task['id']);
+    foreach ($assignees as $a) {
+        $assigned = $a['full_name'] . "<br>";
+    }
+    $followers = $this->ci->tasks_model->get_task_followers($task['id']);
+    foreach ($followers as $a) {
+        $followby = $a['full_name'] . "<br>";
+    }
+
+    $html .= '<td width="12%">' . $assigned . '</td>';
+    $html .= '<td width="12%">' . $followby . '</td>';
+
     $html .= '<td width="9.28%">' . _d($task['startdate']) . '</td>';
     $html .= '<td width="9.28%">' . (is_date($task['duedate']) ? _d($task['duedate']): '') . '</td>';
     $html .= '<td width="7%">' . format_task_status($task['status'], true, true) . '</td>';
