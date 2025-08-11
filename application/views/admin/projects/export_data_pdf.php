@@ -194,9 +194,13 @@ $html .= '<thead>';
 $html .= '<tr bgcolor="#323a45" style="color:#ffffff;">';
 $html .= '<th width="12.5%"><b>' . _l('project_member') . '</b></th>';
 $html .= '<th width="12.5%"><b>' . _l('staff_total_task_assigned') . '</b></th>';
-$html .= '<th width="12.5%"><b>' . _l('staff_total_comments_on_tasks') . '</b></th>';
-$html .= '<th width="12.5%"><b>' . _l('total_project_discussions_created') . '</b></th>';
-$html .= '<th width="12.5%"><b>' . _l('total_project_discussions_comments') . '</b></th>';
+$html .= '<th width="12.5%"><b>' . _l('staff_total_task_in_progress') . '</b></th>';
+$html .= '<th width="12.5%"><b>' . _l('staff_total_task_testing') . '</b></th>';
+$html .= '<th width="12.5%"><b>' . _l('staff_total_task_completed') . '</b></th>';
+
+// $html .= '<th width="12.5%"><b>' . _l('staff_total_comments_on_tasks') . '</b></th>';
+// $html .= '<th width="12.5%"><b>' . _l('total_project_discussions_created') . '</b></th>';
+// $html .= '<th width="12.5%"><b>' . _l('total_project_discussions_comments') . '</b></th>';
 $html .= '<th width="12.5%"><b>' . _l('total_project_files') . '</b></th>';
 $html .= '<th width="12.5%"><b>' . _l('time_h') . '</b></th>';
 $html .= '<th width="12.5%"><b>' . _l('time_decimal') . '</b></th>';
@@ -207,9 +211,13 @@ foreach ($members as $member) {
     $html .= '<tr style="color:#4a4a4a;">';
     $html .= '<td>' . get_staff_full_name($member['staff_id']) . '</td>';
     $html .= '<td>' . total_rows(db_prefix() . 'tasks', 'rel_type="project" AND rel_id="' . $project->id . '" AND id IN (SELECT taskid FROM ' . db_prefix() . 'task_assigned WHERE staffid="' . $member['staff_id'] . '")') . '</td>';
-    $html .= '<td>' . total_rows(db_prefix() . 'task_comments', 'staffid = ' . $member['staff_id'] . ' AND taskid IN (SELECT id FROM ' . db_prefix() . 'tasks WHERE rel_type="project" AND rel_id="' . $project->id . '")') . '</td>';
-    $html .= '<td>' . total_rows(db_prefix() . 'projectdiscussions', ['staff_id' => $member['staff_id'], 'project_id' => $project->id]) . '</td>';
-    $html .= '<td>' . total_rows(db_prefix() . 'projectdiscussioncomments', 'staff_id=' . $member['staff_id'] . ' AND discussion_id IN (SELECT id FROM ' . db_prefix() . 'projectdiscussions WHERE project_id=' . $project->id . ')') . '</td>';
+    $html .= '<td>' . total_rows(db_prefix() . 'tasks', 'rel_type="project" AND rel_id="' . $project->id . '" AND id IN (SELECT taskid FROM ' . db_prefix() . 'task_assigned WHERE status = 4 AND staffid="' . $member['staff_id'] . '")') . '</td>';
+    $html .= '<td>' . total_rows(db_prefix() . 'tasks', 'rel_type="project" AND rel_id="' . $project->id . '" AND id IN (SELECT taskid FROM ' . db_prefix() . 'task_assigned WHERE status = 3 AND staffid="' . $member['staff_id'] . '")') . '</td>';
+    $html .= '<td>' . total_rows(db_prefix() . 'tasks', 'rel_type="project" AND rel_id="' . $project->id . '" AND id IN (SELECT taskid FROM ' . db_prefix() . 'task_assigned WHERE status = 5 AND staffid="' . $member['staff_id'] . '")') . '</td>';
+
+    // $html .= '<td>' . total_rows(db_prefix() . 'task_comments', 'staffid = ' . $member['staff_id'] . ' AND taskid IN (SELECT id FROM ' . db_prefix() . 'tasks WHERE rel_type="project" AND rel_id="' . $project->id . '")') . '</td>';
+    // $html .= '<td>' . total_rows(db_prefix() . 'projectdiscussions', ['staff_id' => $member['staff_id'], 'project_id' => $project->id]) . '</td>';
+    // $html .= '<td>' . total_rows(db_prefix() . 'projectdiscussioncomments', 'staff_id=' . $member['staff_id'] . ' AND discussion_id IN (SELECT id FROM ' . db_prefix() . 'projectdiscussions WHERE project_id=' . $project->id . ')') . '</td>';
     $html .= '<td>' . total_rows(db_prefix() . 'project_files', ['staffid' => $member['staff_id'], 'project_id' => $project->id]) . '</td>';
     $member_tasks_assigned = $this->ci->tasks_model->get_tasks_by_staff_id($member['staff_id'], ['rel_id' => $project->id, 'rel_type' => 'project']);
     $seconds               = 0;
