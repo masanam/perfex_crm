@@ -12,6 +12,10 @@ $lang['appointment_description'] = 'Description';
 $lang['appointment_optional'] = '<small> (optional) </small>';
 $lang['appointment_create_new_appointment'] = 'Request New Appointment';
 $lang['appointment_new_appointment'] = 'New appointment';
+$lang['appointment_start_at '] = 'Appointment Start';
+$lang['appointment_end_at'] = 'Appointment End';
+$lang['appointment_duration'] = 'Appointment Duration';
+
 $lang['appointment_new_appointment_submitted'] = 'New appointment submitted via form!';
 $lang['appointment_edit_appointment'] = 'Edit Appointment';
 $lang['appointment_are_you_sure'] = 'Are you sure you want to delete this appointment?';

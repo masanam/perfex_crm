@@ -29,20 +29,31 @@
                                 <?php echo render_select('attendees[]', $staff_members, ['staffid', ['firstname', 'lastname']], 'appointment_select_attendees', [get_staff_user_id()], ['multiple' => true], [], '', '', false); ?>
                             </div>
                         <?php endif; ?>
-                        <div class="col-md-12 no-padding">
-                            <div class="col-md-6 no-padding">
-                                <?php echo render_datetime_input('date', 'appointment_date_and_time', '', ['readonly' => "readonly"], [], '', 'appointment-date'); ?>
-                            </div>
-                            <div class="col-md-6" style="padding-right: 0;padding-left:10px;">
+                        <div class="row">
+                            <div class="col-md-4">
                                 <div class="form-group">
                                     <label for="address"><?= _l('appointment_meeting_location') . ' ' . _l('appointment_optional'); ?></label>
-                                    <!-- <input type="text" class="form-control" name="address" id="address"> -->
                                     <select class="form-control selectpicker" name="address" id="address">
                                         <option value=""><?= _l('dropdown_non_selected_tex'); ?></option>
                                         <option value="Lombok">Lombok</option>
                                         <option value="Kuta">Kuta</option>
                                         <option value="Sanur">Sanur</option>
                                         <option value="Seminyak">Seminyak</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <?php echo render_datetime_input('date', 'appointment_date_and_time', '', ['readonly' => "readonly"], [], '', 'appointment-date'); ?>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="duration"><?= _l('appointment_duration', 'Durasi Meeting'); ?></label>
+                                    <select class="form-control selectpicker" name="duration" id="duration">
+                                        <option value="1">1 Jam</option>
+                                        <option value="2">2 Jam</option>
+                                        <option value="3">3 Jam</option>
+                                        <option value="4">4 Jam</option>
+                                        <option value="all_day">All Day</option>
                                     </select>
                                 </div>
                             </div>
@@ -126,9 +137,5 @@
         </div><!-- /.modal-content -->
     </div><!-- /.modal-dialog -->
 </div><!-- /.modal -->
-<?php //require('modules/appointly/assets/js/modals/create_internal_crm_js.php'); ?>
-<?php require('modules/appointly/assets/js/modals/create_leads_contacts_js.php'); ?>
-
-<script>
-
-</script>
+<?php require('modules/appointly/assets/js/modals/create_internal_crm_js.php'); ?>
+<?php require('modules/appointly/assets/js/modals/create_leads_contacts_js.php'); ?>
