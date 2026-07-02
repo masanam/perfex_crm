@@ -175,6 +175,12 @@ class Appointly_model extends App_Model
     {
         $data = array_merge($data, convertDateForDatabase($data['date']));
 
+        if (!$this->validate_double_booking($data)) {
+            header('Content-Type: application/json');
+            echo json_encode(['result' => false, 'error' => _l('appointment_double_booking_error', 'Waktu dan lokasi ini sudah dibooking oleh meeting lain.')]);
+            die();
+        }
+
         $data['hash'] = app_generate_hash();
 
         if (isset($data['custom_fields'])) {
@@ -444,6 +450,12 @@ class Appointly_model extends App_Model
         /** @var array Original Appointment $originalAppointment */
         $data = $this->validateRecurringData($originalAppointment, $data);
 
+        if (!$this->validate_double_booking($data, $appointment_id)) {
+            header('Content-Type: application/json');
+            echo json_encode(['result' => false, 'error' => _l('appointment_double_booking_error', 'Waktu dan lokasi ini sudah dibooking oleh meeting lain.')]);
+            die();
+        }
+
         $this->db->where('id', $appointment_id);
         $this->db->update(db_prefix() . 'appointly_appointments', $data);
 
@@ -536,6 +548,12 @@ class Appointly_model extends App_Model
 
         /** @var array Original Appointment Data $originalAppointment */
         $data = $this->validateRecurringData($originalAppointment, $data);
+
+        if (!$this->validate_double_booking($data, $appointment_id)) {
+            header('Content-Type: application/json');
+            echo json_encode(['result' => false, 'error' => _l('appointment_double_booking_error', 'Waktu dan lokasi ini sudah dibooking oleh meeting lain.')]);
+            die();
+        }
 
         $this->db->where('id', $appointment_id);
         $this->db->update(db_prefix() . 'appointly_appointments', $data);
@@ -632,9 +650,11 @@ class Appointly_model extends App_Model
             $format = '"%h:%i %p"';
         }
 
-        $this->db->select('TIME_FORMAT(start_hour, ' . $format . ') as start_hour, date, source, created_by', false);
+        $this->db->select('TIME_FORMAT(start_hour, ' . $format . ') as start_hour, date, source, created_by, address, duration', false);
         $this->db->from(db_prefix() . 'appointly_appointments');
         $this->db->where('approved', 1);
+        $this->db->where('cancelled', 0);
+        $this->db->where('finished', 0);
 
         $dates = $this->db->get()->result_array();
 
@@ -736,6 +756,64 @@ class Appointly_model extends App_Model
             return $data;
         // }
         // return $data;
+    }
+
+    public function validate_double_booking($data, $appointment_id = null)
+    {
+        if (!isset($data['date']) || !isset($data['address']) || empty($data['address'])) {
+            return true;
+        }
+
+        $new_start = $data['start_hour'] ?? '00:00';
+        $new_duration = $data['duration'] ?? '1';
+
+        // All Day: block if any meeting exists on this date+location
+        $this->db->where('date', $data['date']);
+        $this->db->where('address', $data['address']);
+        $this->db->where('cancelled', 0);
+        $this->db->where('finished', 0);
+        if ($appointment_id) {
+            $this->db->where('id !=', $appointment_id);
+        }
+        $existing = $this->db->get(db_prefix() . 'appointly_appointments')->result_array();
+
+        if (empty($existing)) {
+            return true;
+        }
+
+        // If new meeting is all day, block if anything on that date
+        if ($new_duration === 'all_day') {
+            return false;
+        }
+
+        // Calculate new meeting time range in minutes from midnight
+        $new_start_min = $this->_time_to_minutes($new_start);
+        $new_end_min   = $new_start_min + (int)$new_duration * 60;
+
+        foreach ($existing as $meet) {
+            // If existing meeting is all day it blocks the entire day
+            if (($meet['duration'] ?? '1') === 'all_day') {
+                return false;
+            }
+            $exist_start_min = $this->_time_to_minutes($meet['start_hour']);
+            $exist_end_min   = $exist_start_min + (int)($meet['duration'] ?? 1) * 60;
+
+            // Overlap: new_start <= exist_end AND new_end > exist_start
+            if ($new_start_min <= $exist_end_min && $new_end_min > $exist_start_min) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Helper: convert HH:MM string to total minutes from midnight
+     */
+    private function _time_to_minutes($time_str)
+    {
+        $parts = explode(':', $time_str);
+        return (int)($parts[0] ?? 0) * 60 + (int)($parts[1] ?? 0);
     }
 
     /**

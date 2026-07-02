@@ -57,6 +57,14 @@
                var url = form.action;
 
                $.post(url, data).done(function(response) {
+                    if (response.result === false && response.error) {
+                         alert_float('danger', response.error);
+                         $('button[type="submit"], button.close_btn').prop('disabled', false);
+                         $('button[type="submit"]').html('<?= _l("submit"); ?>');
+                         $('#appointment-form .modal-body').removeClass('filterBlur');
+                         $('.modal-title').html("<?= _l('appointment_new_appointment'); ?>");
+                         return;
+                    }
                     if (response.result) {
                          if (isOutlookLoggedIn()) {
                               if (isOutlookChecked !== null && isOutlookChecked.checked) {

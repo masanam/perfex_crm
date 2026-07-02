@@ -217,6 +217,9 @@ if (!function_exists('checkForModuleReinstallation')) {
         if (!$CI->db->field_exists('google_meet_link', db_prefix() . 'appointly_appointments')) {
             $CI->db->query("ALTER TABLE " . db_prefix() . "appointly_appointments ADD `google_meet_link` VARCHAR(191) NULL DEFAULT NULL AFTER `google_calendar_link`;");
         }
+        if (!$CI->db->field_exists('duration', db_prefix() . 'appointly_appointments')) {
+            $CI->db->query("ALTER TABLE " . db_prefix() . "appointly_appointments ADD `duration` VARCHAR(10) NOT NULL DEFAULT '1' AFTER `start_hour`;");
+        }
     }
 
     if (!function_exists('bugCheckCommentsField')) {

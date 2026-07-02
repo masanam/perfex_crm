@@ -52,6 +52,13 @@
           var url = form.action;
 
           $.post(url, data).done(function(response) {
+               if (response.result === false && response.error) {
+                    alert_float('danger', response.error);
+                    $('button[type="submit"], button.close_btn, #addToOutlookBtn').prop('disabled', false);
+                    $('button[type="submit"]').html('<?= _l("submit"); ?>');
+                    $('#appointment-form .modal-body').removeClass('filterBlur');
+                    return;
+               }
                if (response.result) {
                     if (isOutlookLoggedIn() && isOutlookChecked != null) {
                          outlookAddOrUpdateEvent(formSerializedData);

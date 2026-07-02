@@ -1,7 +1,7 @@
 <script>
     $(function() {
         init_selectpicker();
-        initAppointmentScheduledDatesStaff();
+        initAppointmentScheduledDates();
         init_editor('textarea[name="notes"]', {
             menubar: false,
         });
@@ -15,7 +15,6 @@
             subject: "required",
             description: "required",
             date: "required",
-            rel_type: "required",
             'attendees[]': {
                 required: true,
                 minlength: 2
@@ -34,11 +33,18 @@
 
             var formSerializedData = $(form).serializeArray();
 
-
             var data = $(form).serialize();
             var url = form.action;
 
             $.post(url, data).done(function(response) {
+                if (response.result === false && response.error) {
+                    alert_float('danger', response.error);
+                    $('button[type="submit"], button.close_btn').prop('disabled', false);
+                    $('button[type="submit"]').html('<?= _l("submit"); ?>');
+                    $('#appointment-internal-crm-form .modal-body').removeClass('filterBlur');
+                    $('.modal-title').html('Internal Staff Appointment');
+                    return;
+                }
                 if (response.result) {
                     alert_float('success', "<?= _l("appointment_created"); ?>");
                     setTimeout(() => window.location.reload(), 1000);

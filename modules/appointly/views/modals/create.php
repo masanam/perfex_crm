@@ -81,14 +81,10 @@
                                 <?= _l('appointments_google_calendar'); ?>
                             <?php endif; ?>
                         </div>
-                        <div class="col-md-6 no-padding">
-                            <?php echo render_datetime_input('date', 'appointment_date_and_time', '', ['readonly' => "readonly"], [], '', 'appointment-date'); ?>
-                        </div>
-                        <div class="clearfix"></div>
-
-                        <div class="form-group">
-                            <label for="address"><?= _l('appointment_meeting_location') . ' ' . _l('appointment_optional'); ?></label>
-                            <!-- <input type="text" class="form-control" name="address" id="address"> -->
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="address"><?= _l('appointment_meeting_location') . ' ' . _l('appointment_optional'); ?></label>
                                     <select class="form-control selectpicker" name="address" id="address">
                                         <option value=""><?= _l('dropdown_non_selected_tex'); ?></option>
                                         <option value="Lombok">Lombok</option>
@@ -96,6 +92,23 @@
                                         <option value="Sanur">Sanur</option>
                                         <option value="Seminyak">Seminyak</option>
                                     </select>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <?php echo render_datetime_input('date', 'appointment_date_and_time', '', ['readonly' => "readonly"], [], '', 'appointment-date'); ?>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="duration"><?= _l('appointment_duration', 'Durasi Meeting'); ?></label>
+                                    <select class="form-control selectpicker" name="duration" id="duration">
+                                        <option value="1">1 Jam</option>
+                                        <option value="2">2 Jam</option>
+                                        <option value="3">3 Jam</option>
+                                        <option value="4">4 Jam</option>
+                                        <option value="all_day">All Day</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
 
                         <div class="form-group">

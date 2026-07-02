@@ -128,11 +128,38 @@
                                             <?= _d($appointment['date']); ?>
                                         </span><br>
 
+                                    <?php
+                                        $duration = isset($appointment['duration']) ? $appointment['duration'] : '1';
+                                        $start_timestamp = strtotime($appointment['start_hour']);
+                                        if ($duration === 'all_day') {
+                                            $duration_text = 'All Day';
+                                            $end_time_text = 'All Day';
+                                        } else {
+                                            $duration_hours = (float)$duration;
+                                            $end_timestamp = $start_timestamp + ($duration_hours * 3600);
+                                            $duration_text = $duration . ' Jam';
+                                            $end_time_text = date("H:i A", $end_timestamp);
+                                        }
+                                        $start_time_text = date("H:i A", $start_timestamp);
+                                    ?>
                                     <span class="spmodified">
-                                            <boldit><?= _l('appointment_squeduled_at_text'); ?>
+                                            <boldit><?= _l('appointment_start_at', 'Start At'); ?>
                                             </boldit>
-                                            <?= date("H:i A", strtotime($appointment['start_hour'])); ?>
+                                            <?= $start_time_text; ?>
                                         </span><br>
+                                    
+                                    <span class="spmodified">
+                                            <boldit><?= _l('appointment_end_at', 'End At'); ?>
+                                            </boldit>
+                                            <?= $end_time_text; ?>
+                                        </span><br>
+                                        
+                                    <span class="spmodified">
+                                            <boldit><?= _l('appointment_duration', 'Duration'); ?>
+                                            </boldit>
+                                            <?= $duration_text; ?>
+                                        </span><br>
+
 
                                     <div class="spmodified attendees">
                                         <boldit><?= _l('appointment_staff_attendees'); ?>

@@ -21,13 +21,11 @@ if (file_exists(APPPATH . 'config/app-config.php')) {
     die();
 }
 
-/**
- * Database Tables Prefix
- * @return string
- */
-function db_prefix()
-{
-    return defined('APP_DB_PREFIX') ? APP_DB_PREFIX : 'tbl';
+if (!function_exists('db_prefix')) {
+    function db_prefix()
+    {
+        return defined('APP_DB_PREFIX') ? APP_DB_PREFIX : 'tbl';
+    }
 }
 /*
 |--------------------------------------------------------------------------
