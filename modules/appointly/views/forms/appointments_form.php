@@ -77,14 +77,41 @@ applyAdditionalCssStyles($clientUserData);
                         <label for="phone"><?= _l('appointment_phone'); ?> (Ex: <?= _l('appointment_your_phone_example'); ?>)</label>
                         <input type="text" class="form-control" value="<?= (isset($clientUserData['client_logged_in'])) ? get_contact_detail($clientUserData['contact_user_id'], 'phonenumber') : ''; ?>" name="phone" id="phone">
                     </div>
-                    <div class="hours_wrapper">
+                    <!-- Baris 1: Available Hours & Busy Hours -->
+                    <div class="hours_wrapper text-right mbot10">
                         <span class="available_time_info hwp"><?= _l('appointment_available_hours'); ?></span>
                         <span class="busy_time_info hwp"><?= _l('appointment_busy_hours'); ?></span>
                     </div>
-                    <?php echo render_datetime_input('date', 'appointment_date_and_time', '', ['readonly' => "readonly"], [], '', 'appointment-date'); ?>
-                    <div class="form-group">
-                        <label for="address"><?= _l('appointment_meeting_location') . ' ' . _l('appointment_optional'); ?></label>
-                        <input type="text" class="form-control" value="" name="address" id="address">
+
+                    <!-- Baris 2: Location, Date/Time, Duration -->
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label for="address"><?= _l('appointment_meeting_location') . ' ' . _l('appointment_optional'); ?></label>
+                                <select class="form-control selectpicker" name="address" id="address">
+                                    <option value=""><?= _l('dropdown_non_selected_tex'); ?></option>
+                                    <option value="Lombok">Lombok</option>
+                                    <option value="Kuta">Kuta</option>
+                                    <option value="Sanur">Sanur</option>
+                                    <option value="Seminyak">Seminyak</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <?php echo render_datetime_input('date', 'appointment_date_and_time', '', ['readonly' => "readonly"], [], '', 'appointment-date'); ?>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label for="duration"><?= _l('appointment_duration', 'Durasi Meeting'); ?></label>
+                                <select class="form-control selectpicker" name="duration" id="duration">
+                                    <option value="1">1 Jam</option>
+                                    <option value="2">2 Jam</option>
+                                    <option value="3">3 Jam</option>
+                                    <option value="4">4 Jam</option>
+                                    <option value="all_day">All Day</option>
+                                </select>
+                            </div>
+                        </div>
                     </div>
                     <?php
                     $rel_cf_id = (isset($appointment) ? $appointment['apointment_id'] : false);
