@@ -71,16 +71,21 @@
                             <label for="phone"><?= _l('appointment_phone'); ?> (Ex: <?= _l('appointment_your_phone_example'); ?>) </label>
                             <input type="text" value="" class="form-control" name="phone" id="phone">
                         </div>
-                        <div class="pull-right available_times_labels">
+                        <div class="available_times_labels" style="float: right; margin-bottom: 10px; text-align: right;">
                             <span class="available_time_info">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
                             <?= _l('appointment_available_hours'); ?>
+                            &nbsp;
                             <span class="busy_time_info">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
                             <?= _l('appointment_busy_hours'); ?>
                             <?php if (appointlyGoogleAuth()) : ?>
+                                &nbsp;
                                 <span class="busy_time_info_google">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
                                 <?= _l('appointments_google_calendar'); ?>
                             <?php endif; ?>
                         </div>
+                        <div style="clear: both;"></div>
+
+                        <!-- Baris 2: Location, Date/Time, Duration -->
                         <div class="row">
                             <div class="col-md-4">
                                 <div class="form-group">
