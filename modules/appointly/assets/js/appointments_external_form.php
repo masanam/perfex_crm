@@ -30,12 +30,48 @@
                     onGenerate: function (ct) {
 
                         if (is_busy_times_enabled == 1) {
+                            var selectedAddress = $('#address').val();
                             var selectedDate = ct.getFullYear() + "-" + (((ct.getMonth() + 1) < 10) ? "0" : "") + (ct.getMonth() + 1 + "-" + ((ct.getDate() < 10) ? "0" : "") + ct.getDate());
+
+                            $("body").find(".xdsoft_time").removeClass("busy_time busy_google_time xdsoft_disabled");
+
                             $(r).each(function (i, el) {
-                                if (el.date == selectedDate) {
-                                    var currentTime = $("body")
-                                        .find(".xdsoft_time:contains(\"" + el.start_hour + "\")");
-                                    currentTime.addClass("busy_time");
+                                var matchAddress = (selectedAddress == "" || el.address == selectedAddress || !el.address);
+                                if (el.date == selectedDate && matchAddress) {
+                                    if (el.duration === 'all_day') {
+                                        $("body").find(".xdsoft_time").each(function () {
+                                            $(this).addClass("busy_time xdsoft_disabled");
+                                        });
+                                        return;
+                                    }
+
+                                    var timeParts = el.start_hour.replace(/[^\d:]/g, '').split(':');
+                                    var startH = parseInt(timeParts[0], 10) || 0;
+                                    var startM = parseInt(timeParts[1], 10) || 0;
+                                    var startMin = startH * 60 + startM;
+                                    var durationHours = parseFloat(el.duration) || 1;
+                                    var endMin = startMin + durationHours * 60;
+                                    var is24h = (app.options.time_format == 24);
+
+                                    for (var slotMin = startMin; slotMin < endMin; slotMin += 30) {
+                                        var slotH = Math.floor(slotMin / 60);
+                                        var slotM = slotMin % 60;
+                                        var mStr = (slotM < 10 ? '0' : '') + slotM;
+                                        var slotStr = '';
+
+                                        if (is24h) {
+                                            var hStr = (slotH < 10 ? '0' : '') + slotH;
+                                            slotStr = hStr + ':' + mStr;
+                                        } else {
+                                            var ampm = slotH >= 12 ? 'PM' : 'AM';
+                                            var h12 = slotH % 12;
+                                            if (h12 === 0) h12 = 12;
+                                            slotStr = h12 + ':' + mStr + ' ' + ampm;
+                                        }
+
+                                        var currentTime = $("body").find(".xdsoft_time:contains(\"" + slotStr + "\")");
+                                        currentTime.addClass("busy_time xdsoft_disabled");
+                                    }
                                 }
                             });
                         }
@@ -53,8 +89,6 @@
                         }, 200);
                     },
                     onChangeDateTime: function () {
-                        var currentTime = $("body").find(".xdsoft_time");
-                        currentTime.removeClass("busy_time");
                     }
                 };
 
@@ -68,6 +102,10 @@
                 appointmentDatePickerOptionsExternal.format = dateFormat;
 
                 $(".appointment-date").datetimepicker(appointmentDatePickerOptionsExternal);
+
+                $("body").on("change", "#address, #duration", function() {
+                    $(".appointment-date").datetimepicker("update");
+                });
             });
 
             jQuery.datetimepicker.setLocale(app.locale);

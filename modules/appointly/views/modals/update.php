@@ -130,6 +130,7 @@
                         <div class="form-group">
                             <label for="address"><?= _l('appointment_meeting_location') . ' ' . _l('appointment_optional'); ?></label>
                                     <select class="form-control selectpicker" name="address" id="address">
+                                        <option value="ESI - Lantai 8" <?= ($history['address'] == 'ESI - Lantai 8') ? 'selected' : '' ?>>ESI - Lantai 8</option>
                                         <option value="Lombok" <?= ($history['address'] == 'Lombok') ? 'selected' : '' ?>>Lombok</option>
                                         <option value="Kuta" <?= ($history['address'] == 'Kuta') ? 'selected' : '' ?>>Kuta</option>
                                         <option value="Sanur" <?= ($history['address'] == 'Sanur') ? 'selected' : '' ?>>Sanur</option>

@@ -621,6 +621,44 @@ function projectExternalFileUpload(files, externalType) {
   });
 }
 
+$("body").on("click", "#save_gdrive_link_btn", function () {
+  var url = $.trim($("#gdrive_file_url").val());
+  var name = $.trim($("#gdrive_file_name").val());
+
+  if (!url) {
+    alert_float("warning", "Silakan masukkan link Google Drive yang valid");
+    return;
+  }
+
+  if (!name) {
+    name = "Google Drive File";
+  }
+
+  $(this).prop("disabled", true).addClass("disabled");
+
+  if (typeof projectExternalFileUpload == "function" && typeof project_id != "undefined" && project_id) {
+    projectExternalFileUpload(
+      [
+        {
+          name: name,
+          link: url,
+        },
+      ],
+      "gdrive"
+    );
+  } else if (typeof saveProjectExternalFile == "function") {
+    saveProjectExternalFile(
+      [
+        {
+          name: name,
+          link: url,
+        },
+      ],
+      "gdrive"
+    );
+  }
+});
+
 function taskExternalFileUpload(files, externalType) {
   $.post(site_url + "clients/project/" + project_id, {
     files: files,

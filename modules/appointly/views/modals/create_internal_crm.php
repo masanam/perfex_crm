@@ -35,6 +35,7 @@
                                     <label for="address"><?= _l('appointment_meeting_location') . ' ' . _l('appointment_optional'); ?></label>
                                     <select class="form-control selectpicker" name="address" id="address">
                                         <option value=""><?= _l('dropdown_non_selected_tex'); ?></option>
+                                        <option value="ESI - Lantai 8">ESI - Lantai 8</option>
                                         <option value="Lombok">Lombok</option>
                                         <option value="Kuta">Kuta</option>
                                         <option value="Sanur">Sanur</option>
