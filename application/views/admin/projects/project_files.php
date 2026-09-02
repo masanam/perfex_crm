@@ -2,21 +2,47 @@
 <?php echo form_open_multipart(admin_url('projects/attach_file/' . $project->id), ['class' => 'dropzone', 'id' => 'project-files-upload']); ?>
 <input type="file" name="file" multiple />
 <?php echo form_close(); ?>
-<span class="tw-mt-4 tw-inline-block tw-text-sm"><?php echo _l('project_file_visible_to_customer'); ?></span><br />
-<div class="onoffswitch">
-    <input type="checkbox" name="visible_to_customer" id="pf_visible_to_customer" class="onoffswitch-checkbox">
-    <label class="onoffswitch-label" for="pf_visible_to_customer"></label>
-</div>
-<div class="tw-flex tw-justify-end tw-items-center tw-space-x-2">
-    <button type="button" class="btn btn-default" onclick="$('#gdrive_file_modal').modal('show'); return false;">
-        <i class="fa-brands fa-google tw-text-red-500 tw-mr-1" aria-hidden="true"></i>
-        <?php echo _l('choose_from_google_drive'); ?>
-    </button>
-    <button type="button" class="btn btn-default" onclick="$('#repo_file_modal').modal('show'); return false;">
-        <i class="fa-brands fa-github tw-mr-1" aria-hidden="true"></i>
-        Link Repository
-    </button>
-    <div id="dropbox-chooser"></div>
+
+<div class="tw-my-4 tw-p-4 tw-bg-neutral-50 tw-border tw-border-neutral-200 tw-rounded-lg">
+    <div class="tw-flex tw-justify-between tw-items-center">
+        <div>
+            <span class="tw-text-sm tw-font-medium tw-text-neutral-700"><?php echo _l('project_file_visible_to_customer'); ?></span>
+            <div class="onoffswitch tw-inline-block tw-ml-2" style="vertical-align: middle;">
+                <input type="checkbox" name="visible_to_customer" id="pf_visible_to_customer" class="onoffswitch-checkbox">
+                <label class="onoffswitch-label" for="pf_visible_to_customer"></label>
+            </div>
+        </div>
+        <div class="tw-flex tw-items-center tw-space-x-2">
+            <button type="button" class="btn btn-default btn-sm" onclick="$('#manual_upload_wrapper').toggleClass('hide'); return false;">
+                <i class="fa fa-file-upload tw-mr-1"></i> Upload File Form (Bypass WAF)
+            </button>
+            <button type="button" class="btn btn-default btn-sm" onclick="$('#gdrive_file_modal').modal('show'); return false;">
+                <i class="fa-brands fa-google tw-text-red-500 tw-mr-1" aria-hidden="true"></i>
+                <?php echo _l('choose_from_google_drive'); ?>
+            </button>
+            <button type="button" class="btn btn-default btn-sm" onclick="$('#repo_file_modal').modal('show'); return false;">
+                <i class="fa-brands fa-github tw-mr-1" aria-hidden="true"></i>
+                Link Repository
+            </button>
+            <div id="dropbox-chooser"></div>
+        </div>
+    </div>
+
+    <div id="manual_upload_wrapper" class="hide tw-mt-4 tw-pt-4 tw-border-t tw-border-neutral-200">
+        <p class="tw-text-xs tw-text-neutral-600 tw-mb-2"><strong>Upload Form Direct:</strong> Gunakan form ini jika drag & drop terblokir oleh firewall Cloudflare (mendukung PDF, XLS, XLSX, DOCX, dll).</p>
+        <?php echo form_open_multipart(admin_url('projects/attach_file/' . $project->id), ['id' => 'project-files-upload-manual']); ?>
+            <div class="row">
+                <div class="col-md-7">
+                    <input type="file" name="file[]" class="form-control" multiple required>
+                </div>
+                <div class="col-md-5">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fa fa-cloud-upload tw-mr-1"></i> Upload File Sekarang
+                    </button>
+                </div>
+            </div>
+        <?php echo form_close(); ?>
+    </div>
 </div>
 <div class="clearfix"></div>
 <div class="mtop20"></div>
