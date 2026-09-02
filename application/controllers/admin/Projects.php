@@ -620,6 +620,11 @@ class Projects extends AdminController
         handle_project_file_uploads($project_id);
     }
 
+    public function attach_file($project_id)
+    {
+        handle_project_file_uploads($project_id);
+    }
+
     public function change_file_visibility($id, $visible)
     {
         if ($this->input->is_ajax_request()) {

@@ -1,5 +1,5 @@
 <?php defined('BASEPATH') or exit('No direct script access allowed'); ?>
-<?php echo form_open_multipart(admin_url('projects/upload_file/' . $project->id), ['class' => 'dropzone', 'id' => 'project-files-upload']); ?>
+<?php echo form_open_multipart(admin_url('projects/attach_file/' . $project->id), ['class' => 'dropzone', 'id' => 'project-files-upload']); ?>
 <input type="file" name="file" multiple />
 <?php echo form_close(); ?>
 <span class="tw-mt-4 tw-inline-block tw-text-sm"><?php echo _l('project_file_visible_to_customer'); ?></span><br />
