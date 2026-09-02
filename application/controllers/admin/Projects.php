@@ -1314,10 +1314,10 @@ class Projects extends AdminController
             . "   - Evaluasi dan masukan spesifik untuk anggota tim yang terlibat berdasarkan task & beban kerja mereka.\n\n"
             . "DATA PROYEK AKTUAL:\n" . $promptContext;
 
-        $modelsToTry = ['qwen2.5:14b', 'qwen2.5:7b', 'llama3.1:8b', 'qwen2.5:3b'];
+        $modelsToTry = ['qwen2.5:7b', 'llama3.1:8b', 'qwen2.5:3b', 'qwen2.5:14b'];
         $response = false;
         $curlError = '';
-        $usedModel = 'qwen2.5:14b';
+        $usedModel = 'qwen2.5:7b';
 
         foreach ($modelsToTry as $modelName) {
             $apiPayload = [
