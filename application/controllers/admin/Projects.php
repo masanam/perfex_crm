@@ -1305,59 +1305,48 @@ class Projects extends AdminController
 
             $assignees     = $this->tasks_model->get_task_assignees($t['id']);
             $assigneeNames = array_column($assignees, 'full_name');
-
-            $taskSummaryList[] = sprintf(
-                '- Task: %s | Status: %s | Priority: %s | Due: %s | Assignees: %s%s',
-                $t['name'],
-                strip_tags($statusName),
-                task_priority($t['priority']),
-                !empty($t['duedate']) ? $t['duedate'] : 'Tanpa tenggat',
-                !empty($assigneeNames) ? implode(', ', $assigneeNames) : 'Belum di-assign',
-                $isOverdue ? ' [OVERDUE/TERLAMBAT]' : ''
-            );
+            $taskSummaryList[] = '- ' . $t['name'] . ' [' . strip_tags($statusName) . ']'
+                . ($isOverdue ? ' [OVERDUE]' : '')
+                . (!empty($assigneeNames) ? ' — ' . implode(', ', $assigneeNames) : '');
         }
 
         $milestones   = $this->projects_model->get_milestones($id);
         $milestoneList = [];
         foreach ($milestones as $m) {
-            $milestoneList[] = '- Milestone: ' . $m['name'] . ' (Due: ' . (!empty($m['due_date']) ? $m['due_date'] : '-') . ')';
+            $milestoneList[] = '- ' . $m['name'] . ' (Due: ' . (!empty($m['due_date']) ? $m['due_date'] : '-') . ')';
         }
 
         $progressPercent = $this->projects_model->calc_progress($id);
 
-        $promptContext  = 'PROYEK: ' . $project->name . "\n";
-        $promptContext .= 'KLIEN: ' . (get_company_name($project->clientid) ?: 'N/A') . "\n";
-        $promptContext .= 'TANGGAL MULAI: ' . $project->start_date . ' | DEADLINE: ' . ($project->deadline ?: 'Tidak ada') . "\n";
-        $promptContext .= 'PROGRES KESELURUHAN: ' . $progressPercent . "%\n";
-        $promptContext .= 'TOTAL TASK: ' . $totalTasks . ' (Selesai: ' . $completedTasks . ', Terlambat/Overdue: ' . $overdueTasks . ")\n\n";
-        $promptContext .= 'TIM / ANGGOTA PROYEK: ' . (!empty($memberNames) ? implode(', ', $memberNames) : 'Belum ada anggota') . "\n\n";
-
+        // --- Build compact prompt (shorter = faster) ---
+        $lines = [
+            'Proyek: ' . $project->name,
+            'Deadline: ' . ($project->deadline ?: 'N/A'),
+            'Progres: ' . $progressPercent . '%',
+            'Task: ' . $totalTasks . ' total, ' . $completedTasks . ' selesai, ' . $overdueTasks . ' overdue',
+            'Tim: ' . (!empty($memberNames) ? implode(', ', $memberNames) : '-'),
+        ];
         if (!empty($milestoneList)) {
-            $promptContext .= 'MILESTONE PROYEK:' . "\n" . implode("\n", $milestoneList) . "\n\n";
+            $lines[] = 'Milestone: ' . implode('; ', array_slice($milestoneList, 0, 5));
         }
         if (!empty($taskSummaryList)) {
-            $promptContext .= 'DAFTAR TASK PROYEK:' . "\n" . implode("\n", array_slice($taskSummaryList, 0, 35)) . "\n\n";
+            // Only top 15 tasks for speed
+            $lines[] = 'Task list:' . "\n" . implode("\n", array_slice($taskSummaryList, 0, 15));
         }
+        $promptContext = implode("\n", $lines);
 
-        $systemMessage = 'Anda adalah Senior Executive AI Project Management Consultant & Business Analyst profesional. Tugas Anda adalah memberikan ringkasan eksekutif cerdas (Executive Summary) berdasarkan data aktual proyek.';
+        $systemMessage = 'Kamu adalah AI project manager assistant. Buat ringkasan proyek singkat, padat, dan actionable dalam Bahasa Indonesia.';
 
-        $userInstruction = "Analisis data proyek berikut ini secara komprehensif dan buatkan ringkasan eksekutif dalam Bahasa Indonesia.\n\n"
-            . "Susun laporan dengan format Markdown terstruktur yang rapi dengan 4 bagian utama:\n"
-            . "1. 📊 Rekapitulasi Task & Progres Proyek\n"
-            . "   - Ringkasan total task, persentase penyelesaian, task selesai vs pending.\n"
-            . "   - Status milestone utama.\n"
-            . "2. ⚠️ Hal-hal Penting & Risiko\n"
-            . "   - Task terlambat (overdue) atau mendekati deadline.\n"
-            . "   - Potensi kendala / bottleneck.\n"
-            . "3. 🎯 Rekomendasi & Langkah Strategis\n"
-            . "   - Tindakan konkret untuk Project Manager / Admin.\n"
-            . "4. 👥 Catatan & Saran untuk Personil / Tim\n"
-            . "   - Evaluasi dan masukan spesifik per anggota tim.\n\n"
-            . "DATA PROYEK AKTUAL:\n" . $promptContext;
+        $userInstruction = "Buat ringkasan eksekutif proyek dalam Bahasa Indonesia. Format Markdown, singkat dan padat:\n\n"
+            . "## 📊 Status Proyek\n(progres, task selesai vs overdue)\n\n"
+            . "## ⚠️ Perhatian\n(task terlambat, risiko)\n\n"
+            . "## 🎯 Rekomendasi\n(3-5 tindakan konkret)\n\n"
+            . "## 👥 Saran Tim\n(per anggota jika relevan)\n\n"
+            . "DATA:\n" . $promptContext;
 
-        // --- Call Ollama API ---
-        $modelsToTry = ['qwen2.5:7b', 'llama3.1:8b', 'qwen2.5:3b'];
-        $usedModel   = 'qwen2.5:7b';
+        // --- Call Ollama API (fast model first) ---
+        $modelsToTry = ['qwen2.5:3b', 'qwen2.5:7b', 'llama3.2:3b'];
+        $usedModel   = 'qwen2.5:3b';
         $summaryMarkdown = null;
 
         foreach ($modelsToTry as $modelName) {
@@ -1368,7 +1357,11 @@ class Projects extends AdminController
                     ['role' => 'user',   'content' => $userInstruction],
                 ],
                 'stream'  => false,
-                'options' => ['num_predict' => 800],
+                'options' => [
+                    'num_predict'   => 400,   // ringkas dan cepat (~3-8 detik)
+                    'temperature'   => 0.3,
+                    'top_p'         => 0.85,
+                ],
             ]);
 
             $ch = curl_init('http://188.166.208.79:11434/api/chat');
@@ -1377,7 +1370,7 @@ class Projects extends AdminController
                 CURLOPT_POST           => true,
                 CURLOPT_POSTFIELDS     => $payload,
                 CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
-                CURLOPT_TIMEOUT        => 300,
+                CURLOPT_TIMEOUT        => 180,
                 CURLOPT_CONNECTTIMEOUT => 15,
             ]);
 

@@ -109,8 +109,8 @@
             .done(function(response) {
                 var data = typeof response === 'string' ? JSON.parse(response) : response;
                 if (data && (data.status === 'processing' || data.success)) {
-                    // Start polling every 4 seconds
-                    _aiSummaryPollTimer = setInterval(pollStatus, 4000);
+                    // Start polling every 2 seconds
+                    _aiSummaryPollTimer = setInterval(pollStatus, 2000);
                 } else {
                     setLoading(false);
                     alert_float('danger', (data && data.message) ? data.message : 'Gagal memulai analisis AI.');
@@ -126,7 +126,7 @@
     <?php if (isset($project->ai_summary_status) && $project->ai_summary_status === 'processing') { ?>
     $(function() {
         setLoading(true);
-        _aiSummaryPollTimer = setInterval(pollStatus, 4000);
+        _aiSummaryPollTimer = setInterval(pollStatus, 2000);
     });
     <?php } ?>
 }());
