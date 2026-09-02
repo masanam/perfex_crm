@@ -203,6 +203,9 @@ $(function () {
             "visible_to_customer",
             $('input[name="visible_to_customer"]').prop("checked")
           );
+          if (typeof csrfData !== "undefined") {
+            formData.append(csrfData["token_name"], csrfData["hash"]);
+          }
         },
       })
     );

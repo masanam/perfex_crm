@@ -233,7 +233,7 @@ class Projects extends AdminController
 
             $this->app_scripts->add(
                 'projects-js',
-                base_url($this->app_scripts->core_file('assets/js', 'projects.js')) . '?v=' . $this->app_scripts->core_version(),
+                base_url($this->app_scripts->core_file('assets/js', 'projects.js')) . '?v=' . $this->app_scripts->core_version() . '.' . @filemtime(FCPATH . 'assets/js/projects.min.js'),
                 'admin',
                 ['app-js', 'jquery-comments-js', 'frappe-gantt-js', 'circle-progress-js']
             );
