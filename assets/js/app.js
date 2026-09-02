@@ -1316,7 +1316,20 @@ function _dropzone_defaults() {
 }
 
 function appCreateDropzoneOptions(options) {
-  return $.extend({}, _dropzone_defaults(), options);
+  var defaults = _dropzone_defaults();
+  options = options || {};
+  var customSending = options.sending;
+
+  options.sending = function (file, xhr, formData) {
+    if (typeof csrfData !== "undefined") {
+      formData.append(csrfData["token_name"], csrfData["hash"]);
+    }
+    if (typeof customSending === "function") {
+      customSending(file, xhr, formData);
+    }
+  };
+
+  return $.extend({}, defaults, options);
 }
 
 function onChartClickRedirect(evt, chart, fetchUrl) {

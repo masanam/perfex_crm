@@ -12,6 +12,10 @@
         <i class="fa-brands fa-google tw-text-red-500 tw-mr-1" aria-hidden="true"></i>
         <?php echo _l('choose_from_google_drive'); ?>
     </button>
+    <button type="button" class="btn btn-default" onclick="$('#repo_file_modal').modal('show'); return false;">
+        <i class="fa-brands fa-github tw-mr-1" aria-hidden="true"></i>
+        Link Repository
+    </button>
     <div id="dropbox-chooser"></div>
 </div>
 <div class="clearfix"></div>
@@ -197,6 +201,36 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-default" data-dismiss="modal"><?php echo _l('close'); ?></button>
                 <button type="button" class="btn btn-primary" id="save_gdrive_link_btn"><?php echo _l('submit'); ?></button>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="repo_file_modal" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                <h4 class="modal-title">
+                    <i class="fa-brands fa-github tw-mr-1"></i>
+                    Tambah Link Repository
+                </h4>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="repo_file_url" class="control-label">
+                        <small class="req text-danger">* </small>Link / URL Repository (GitHub, GitLab, Bitbucket, dll)
+                    </label>
+                    <input type="url" id="repo_file_url" class="form-control" placeholder="https://github.com/username/repository" required>
+                    <span class="help-block tw-text-xs tw-text-neutral-500">Paste URL repository proyek Anda (misal: GitHub, GitLab, atau Bitbucket).</span>
+                </div>
+                <div class="form-group">
+                    <label for="repo_file_name" class="control-label">Nama Repository / Keterangan (Opsional)</label>
+                    <input type="text" id="repo_file_name" class="form-control" placeholder="Contoh: Source Code Frontend Proyek">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal"><?php echo _l('close'); ?></button>
+                <button type="button" class="btn btn-primary" id="save_repo_link_btn"><?php echo _l('submit'); ?></button>
             </div>
         </div>
     </div>

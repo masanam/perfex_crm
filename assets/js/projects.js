@@ -509,6 +509,32 @@ $("body").on("click", "#save_gdrive_link_btn", function () {
   );
 });
 
+$("body").on("click", "#save_repo_link_btn", function () {
+  var url = $.trim($("#repo_file_url").val());
+  var name = $.trim($("#repo_file_name").val());
+
+  if (!url) {
+    alert_float("warning", "Silakan masukkan link repository yang valid");
+    return;
+  }
+
+  if (!name) {
+    name = "Repository Link";
+  }
+
+  $(this).prop("disabled", true).addClass("disabled");
+
+  saveProjectExternalFile(
+    [
+      {
+        name: name,
+        link: url,
+      },
+    ],
+    "repo"
+  );
+});
+
 function milestones_switch_view() {
   $("#milestones-table").toggleClass("hide");
   $(".project-milestones-kanban").toggleClass("hide");

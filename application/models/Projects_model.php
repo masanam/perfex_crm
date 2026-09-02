@@ -2384,7 +2384,7 @@ class Projects_model extends App_Model
         } elseif (isset($path_parts['extension']) && !empty($path_parts['extension'])) {
             $insert['filetype'] = get_mime_by_extension('.' . $path_parts['extension']);
         } else {
-            $insert['filetype'] = 'gdrive/link';
+            $insert['filetype'] = ($data['external'] == 'repo') ? 'repo/link' : 'gdrive/link';
         }
 
         if (isset($data['files'][0]['thumbnailLink'])) {

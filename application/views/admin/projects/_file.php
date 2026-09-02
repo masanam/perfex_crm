@@ -43,6 +43,14 @@
                      </a>
                      <br />
                   <?php
+                     } elseif (!empty($file->external) && $file->external == 'repo') {
+                         ?>
+                     <a href="<?php echo $file->external_link; ?>" target="_blank" class="btn btn-default mbot20">
+                           <i class="fa-brands fa-github" aria-hidden="true"></i>
+                           Buka Repository
+                     </a>
+                     <br />
+                  <?php
                      } ?>
                   <?php
                   $path = PROJECT_ATTACHMENTS_FOLDER . $file->project_id . '/' . $file->file_name;
