@@ -9,11 +9,41 @@
     </a>
   </div>
   <div class="pull-right mbot20">
-   <button class="gpicker" data-on-pick="projectFileGoogleDriveSave">
-    <i class="fa-brands fa-google" aria-hidden="true"></i>
+   <button type="button" class="btn btn-default" data-toggle="modal" data-target="#gdrive_file_modal">
+    <i class="fa-brands fa-google tw-text-red-500 tw-mr-1" aria-hidden="true"></i>
     <?php echo _l('choose_from_google_drive'); ?>
   </button>
   <div id="dropbox-chooser-project-files"></div>
+</div>
+<div class="modal fade" id="gdrive_file_modal" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                <h4 class="modal-title">
+                    <i class="fa-brands fa-google tw-text-red-500 tw-mr-1"></i>
+                    <?php echo _l('choose_from_google_drive'); ?>
+                </h4>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="gdrive_file_url" class="control-label">
+                        <small class="req text-danger">* </small>Link / URL Google Drive
+                    </label>
+                    <input type="url" id="gdrive_file_url" class="form-control" placeholder="https://drive.google.com/file/d/... atau https://docs.google.com/..." required>
+                    <span class="help-block tw-text-xs tw-text-neutral-500">Paste link bagikan (share link) dari file, dokumen, spreadsheet, atau folder Google Drive Anda.</span>
+                </div>
+                <div class="form-group">
+                    <label for="gdrive_file_name" class="control-label">Nama File / Dokumen (Opsional)</label>
+                    <input type="text" id="gdrive_file_name" class="form-control" placeholder="Contoh: Dokumen Perencanaan Q3">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal"><?php echo _l('close'); ?></button>
+                <button type="button" class="btn btn-primary" id="save_gdrive_link_btn"><?php echo _l('submit'); ?></button>
+            </div>
+        </div>
+    </div>
 </div>
 <?php } ?>
 <table class="table dt-table" data-order-col="4" data-order-type="desc">

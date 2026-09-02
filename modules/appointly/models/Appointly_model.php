@@ -303,6 +303,15 @@ class Appointly_model extends App_Model
 
         $data = array_merge($data, convertDateForDatabase($data['date']));
 
+        if (!$this->validate_double_booking($data)) {
+            header('Content-Type: application/json');
+            echo json_encode([
+                'success' => false,
+                'message' => _l('appointment_double_booking_error', 'Waktu dan lokasi ini sudah dibooking oleh meeting lain.')
+            ]);
+            die();
+        }
+
         $responsiblePerson = get_option('appointly_responsible_person');
         $isAppointmentApprovedByDefault = get_option('appointly_client_meeting_approved_default');
 

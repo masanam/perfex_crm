@@ -473,6 +473,32 @@ function saveProjectExternalFile(files, externalType) {
   });
 }
 
+$("body").on("click", "#save_gdrive_link_btn", function () {
+  var url = $.trim($("#gdrive_file_url").val());
+  var name = $.trim($("#gdrive_file_name").val());
+
+  if (!url) {
+    alert_float("warning", "Silakan masukkan link Google Drive yang valid");
+    return;
+  }
+
+  if (!name) {
+    name = "Google Drive File";
+  }
+
+  $(this).prop("disabled", true).addClass("disabled");
+
+  saveProjectExternalFile(
+    [
+      {
+        name: name,
+        link: url,
+      },
+    ],
+    "gdrive"
+  );
+});
+
 function milestones_switch_view() {
   $("#milestones-table").toggleClass("hide");
   $(".project-milestones-kanban").toggleClass("hide");
