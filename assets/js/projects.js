@@ -179,6 +179,9 @@ $(function () {
     new Dropzone(
       "#project-files-upload",
       appCreateDropzoneOptions({
+        headers: {
+          "X-Requested-With": "XMLHttpRequest",
+        },
         paramName: "file",
         uploadMultiple: true,
         parallelUploads: 20,

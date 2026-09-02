@@ -1297,6 +1297,9 @@ function _dropzone_defaults() {
   }
 
   return {
+    headers: {
+      "X-Requested-With": "XMLHttpRequest",
+    },
     createImageThumbnails: true,
     dictDefaultMessage: app.lang.drop_files_here_to_upload,
     dictFallbackMessage: app.lang.browser_not_support_drag_and_drop,
