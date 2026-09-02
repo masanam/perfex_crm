@@ -25,19 +25,26 @@
             </div>
         </div>
 
-        <div id="ai_summary_loading" class="hide tw-p-8 tw-text-center tw-bg-indigo-50 tw-rounded-lg tw-my-4">
-            <i class="fa-solid fa-circle-notch fa-spin fa-2x tw-text-indigo-600 tw-mb-2"></i>
-            <p class="tw-font-semibold tw-text-indigo-900 tw-m-0">Sedang Menganalisis Proyek dengan AI...</p>
-            <small class="tw-text-indigo-600">Memproses task, progres, milestone, dan data personil proyek via Ollama API. Harap tunggu beberapa saat.</small>
+        <!-- Loading indicator -->
+        <div id="ai_summary_loading" class="hide tw-p-8 tw-text-center tw-bg-indigo-50 tw-rounded-xl tw-my-4">
+            <i class="fa-solid fa-circle-notch fa-spin fa-2x tw-text-indigo-600 tw-mb-3"></i>
+            <p class="tw-font-semibold tw-text-indigo-900 tw-m-0">AI sedang menganalisis proyek...</p>
+            <small class="tw-text-indigo-600">Model <strong id="ai_loading_model">qwen2.5:7b</strong> sedang memproses data task, milestone, dan personil. Harap tunggu.</small>
+            <div class="tw-mt-3">
+                <div class="progress" style="height:6px; background:#c7d2fe;">
+                    <div class="progress-bar progress-bar-striped active" role="progressbar" style="width:100%; background:#6366f1;"></div>
+                </div>
+            </div>
         </div>
 
+        <!-- Content area -->
         <div id="ai_summary_content" class="tc-content tw-prose tw-max-w-none">
-            <?php if (!empty($project->ai_summary)) { 
+            <?php if (!empty($project->ai_summary)) {
                 $Parsedown = new Parsedown();
                 echo $Parsedown->text($project->ai_summary);
             } else { ?>
-                <div class="text-center text-muted tw-py-12">
-                    <i class="fa-solid fa-brain fa-3x tw-mb-3 tw-opacity-40"></i>
+                <div class="text-center text-muted tw-py-12" id="ai_summary_empty_state">
+                    <i class="fa-solid fa-brain fa-3x tw-mb-3 tw-opacity-30"></i>
                     <p class="tw-m-0 tw-text-sm">Klik tombol <strong>"Generate AI Summary"</strong> di atas untuk menghasilkan rekapitulasi cerdas, analisis risiko, serta rekomendasi tindakan untuk personil proyek ini.</p>
                 </div>
             <?php } ?>
@@ -46,49 +53,81 @@
 </div>
 
 <script>
-function triggerGenerateAiSummary() {
-    var $btn = $('#generate_ai_summary_btn');
-    var $btnText = $('#generate_ai_btn_text');
-    var pid = typeof project_id !== 'undefined' ? project_id : '<?php echo $project->id; ?>';
-    
-    $btn.prop('disabled', true).addClass('disabled');
-    $btnText.text('Menganalisis...');
-    $('#ai_summary_loading').removeClass('hide');
-    $('#ai_summary_content').addClass('tw-opacity-50');
+(function() {
+    var _aiSummaryPollTimer = null;
+    var _pid = typeof project_id !== 'undefined' ? project_id : '<?php echo (int)$project->id; ?>';
 
-    var postData = {};
-    if (typeof csrfData !== 'undefined') {
-        postData[csrfData.token_name] = csrfData.hash;
+    function setLoading(isLoading) {
+        var $btn = $('#generate_ai_summary_btn');
+        if (isLoading) {
+            $btn.prop('disabled', true).addClass('disabled');
+            $('#generate_ai_btn_text').text('Menganalisis...');
+            $('#ai_summary_loading').removeClass('hide');
+            $('#ai_summary_content').css('opacity', '0.4');
+        } else {
+            $btn.prop('disabled', false).removeClass('disabled');
+            $('#generate_ai_btn_text').text('Generate AI Summary');
+            $('#ai_summary_loading').addClass('hide');
+            $('#ai_summary_content').css('opacity', '1');
+        }
     }
 
-    $.post(admin_url + 'projects/generate_ai_summary/' + pid, postData)
-        .done(function(response){
-            try {
-                var data = typeof response === 'string' ? JSON.parse(response) : response;
-                if (data.success) {
-                    $('#ai_summary_content').html(data.summary_html).removeClass('tw-opacity-50');
-                    $('#ai_summary_time_label').html('Terakhir diperbarui: ' + data.last_updated);
-                    if (data.model_used) {
-                        $('#ai_model_badge').text(data.model_used);
-                    }
-                    alert_float('success', 'AI Summary berhasil diperbarui!');
-                } else {
-                    alert_float('danger', data.message || 'Gagal menghasilkan AI Summary.');
-                    $('#ai_summary_content').removeClass('tw-opacity-50');
-                }
-            } catch(e) {
-                alert_float('danger', 'Gagal memproses respons dari server.');
-                $('#ai_summary_content').removeClass('tw-opacity-50');
+    function pollStatus() {
+        $.getJSON(admin_url + 'projects/get_ai_summary_status/' + _pid, function(data) {
+            if (data.status === 'done') {
+                clearInterval(_aiSummaryPollTimer);
+                _aiSummaryPollTimer = null;
+                setLoading(false);
+                $('#ai_summary_content').html(data.summary_html);
+                $('#ai_summary_empty_state').remove();
+                $('#ai_summary_time_label').html('Terakhir diperbarui: ' + data.last_updated);
+                if (data.model_used) { $('#ai_model_badge').text(data.model_used); }
+                alert_float('success', 'AI Summary berhasil diperbarui!');
+            } else if (data.status === 'error') {
+                clearInterval(_aiSummaryPollTimer);
+                _aiSummaryPollTimer = null;
+                setLoading(false);
+                alert_float('danger', data.message || 'AI gagal menganalisis proyek. Silakan coba lagi.');
             }
-        })
-        .fail(function(xhr){
-            alert_float('danger', 'Error: ' + (xhr.responseText || 'Gagal menghubungi server AI.'));
-            $('#ai_summary_content').removeClass('tw-opacity-50');
-        })
-        .always(function(){
-            $btn.prop('disabled', false).removeClass('disabled');
-            $btnText.text('Generate AI Summary');
-            $('#ai_summary_loading').addClass('hide');
+            // if 'processing', keep polling
+        }).fail(function() {
+            // network hiccup — keep polling, don't stop
         });
-}
+    }
+
+    window.triggerGenerateAiSummary = function() {
+        if (_aiSummaryPollTimer) return; // already running
+
+        setLoading(true);
+
+        var postData = {};
+        if (typeof csrfData !== 'undefined') {
+            postData[csrfData.token_name] = csrfData.hash;
+        }
+
+        $.post(admin_url + 'projects/generate_ai_summary/' + _pid, postData)
+            .done(function(response) {
+                var data = typeof response === 'string' ? JSON.parse(response) : response;
+                if (data && (data.status === 'processing' || data.success)) {
+                    // Start polling every 4 seconds
+                    _aiSummaryPollTimer = setInterval(pollStatus, 4000);
+                } else {
+                    setLoading(false);
+                    alert_float('danger', (data && data.message) ? data.message : 'Gagal memulai analisis AI.');
+                }
+            })
+            .fail(function(xhr) {
+                setLoading(false);
+                alert_float('danger', 'Error: ' + (xhr.responseText || 'Gagal menghubungi server.'));
+            });
+    };
+
+    // If page loads with status=processing, auto-start polling
+    <?php if (isset($project->ai_summary_status) && $project->ai_summary_status === 'processing') { ?>
+    $(function() {
+        setLoading(true);
+        _aiSummaryPollTimer = setInterval(pollStatus, 4000);
+    });
+    <?php } ?>
+}());
 </script>

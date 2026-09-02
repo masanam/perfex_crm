@@ -1210,10 +1210,23 @@ class Projects extends AdminController
         }
     }
 
+    /**
+     * Queue AI Summary generation — respond immediately (no timeout).
+     * The actual Ollama API call runs via background PHP CLI process.
+     */
     public function generate_ai_summary($id)
     {
+        // Ensure columns exist
         if (!$this->db->field_exists('ai_summary', db_prefix() . 'projects')) {
-            $this->db->query('ALTER TABLE `' . db_prefix() . 'projects` ADD `ai_summary` TEXT NULL, ADD `ai_summary_last_updated` DATETIME NULL');
+            $this->db->query('ALTER TABLE `' . db_prefix() . 'projects`
+                ADD `ai_summary` TEXT NULL,
+                ADD `ai_summary_last_updated` DATETIME NULL,
+                ADD `ai_summary_status` VARCHAR(20) NULL DEFAULT NULL,
+                ADD `ai_summary_model` VARCHAR(50) NULL DEFAULT NULL');
+        } elseif (!$this->db->field_exists('ai_summary_status', db_prefix() . 'projects')) {
+            $this->db->query('ALTER TABLE `' . db_prefix() . 'projects`
+                ADD `ai_summary_status` VARCHAR(20) NULL DEFAULT NULL,
+                ADD `ai_summary_model` VARCHAR(50) NULL DEFAULT NULL');
         }
 
         $project = $this->projects_model->get($id);
@@ -1222,16 +1235,59 @@ class Projects extends AdminController
             return;
         }
 
+        // Check if already processing
+        if (isset($project->ai_summary_status) && $project->ai_summary_status === 'processing') {
+            echo json_encode(['success' => true, 'status' => 'processing']);
+            return;
+        }
+
+        // Mark as processing
+        $this->db->where('id', $id);
+        $this->db->update(db_prefix() . 'projects', ['ai_summary_status' => 'processing']);
+
+        // Run background PHP CLI process
+        $phpBin  = PHP_BINARY;
+        $script  = FCPATH . 'index.php';
+        $logFile = sys_get_temp_dir() . '/ai_summary_' . $id . '.log';
+        $cmd     = escapeshellcmd($phpBin)
+            . ' ' . escapeshellarg($script)
+            . ' admin/projects/run_ai_summary_job/' . (int)$id
+            . ' > ' . escapeshellarg($logFile)
+            . ' 2>&1 &';
+        exec($cmd);
+
+        echo json_encode(['success' => true, 'status' => 'processing']);
+    }
+
+    /**
+     * Background worker — called via CLI only (never via HTTP directly).
+     * Builds prompt, calls Ollama API, saves result to DB.
+     */
+    public function run_ai_summary_job($id)
+    {
+        // Allow CLI or local loopback only
+        if (php_sapi_name() !== 'cli' && $_SERVER['REMOTE_ADDR'] !== '127.0.0.1') {
+            show_404();
+            return;
+        }
+
+        @set_time_limit(0);
+        @ini_set('max_execution_time', 0);
+
         $this->load->model('tasks_model');
 
-        // 1. Members
+        $project = $this->projects_model->get($id);
+        if (!$project) {
+            return;
+        }
+
+        // --- Build prompt context ---
         $members = $this->projects_model->get_project_members($id);
         $memberNames = [];
         foreach ($members as $m) {
             $memberNames[] = $m['firstname'] . ' ' . $m['lastname'];
         }
 
-        // 2. Tasks
         $tasks = $this->projects_model->get_tasks($id);
         $taskSummaryList = [];
         $totalTasks = count($tasks);
@@ -1240,25 +1296,18 @@ class Projects extends AdminController
         $today = date('Y-m-d');
 
         foreach ($tasks as $t) {
-            $statusName = format_task_status($t['status'], false, true);
+            $statusName  = format_task_status($t['status'], false, true);
             $isCompleted = ($t['status'] == Tasks_model::STATUS_COMPLETE);
-            if ($isCompleted) {
-                $completedTasks++;
-            }
+            if ($isCompleted) $completedTasks++;
 
             $isOverdue = (!$isCompleted && !empty($t['duedate']) && $t['duedate'] < $today);
-            if ($isOverdue) {
-                $overdueTasks++;
-            }
+            if ($isOverdue) $overdueTasks++;
 
-            $assignees = $this->tasks_model->get_task_assignees($t['id']);
-            $assigneeNames = [];
-            foreach ($assignees as $a) {
-                $assigneeNames[] = $a['full_name'];
-            }
+            $assignees     = $this->tasks_model->get_task_assignees($t['id']);
+            $assigneeNames = array_column($assignees, 'full_name');
 
             $taskSummaryList[] = sprintf(
-                "- Task: %s | Status: %s | Priority: %s | Due: %s | Assignees: %s%s",
+                '- Task: %s | Status: %s | Priority: %s | Due: %s | Assignees: %s%s',
                 $t['name'],
                 strip_tags($statusName),
                 task_priority($t['priority']),
@@ -1268,113 +1317,125 @@ class Projects extends AdminController
             );
         }
 
-        // 3. Milestones
-        $milestones = $this->projects_model->get_milestones($id);
+        $milestones   = $this->projects_model->get_milestones($id);
         $milestoneList = [];
         foreach ($milestones as $m) {
-            $milestoneList[] = sprintf(
-                "- Milestone: %s (Due: %s)",
-                $m['name'],
-                !empty($m['due_date']) ? $m['due_date'] : '-'
-            );
+            $milestoneList[] = '- Milestone: ' . $m['name'] . ' (Due: ' . (!empty($m['due_date']) ? $m['due_date'] : '-') . ')';
         }
 
         $progressPercent = $this->projects_model->calc_progress($id);
 
-        // 4. Construct Data Text for AI
-        $promptContext = "PROYEK: " . $project->name . "\n";
-        $promptContext .= "KLIEN: " . (get_company_name($project->clientid) ?: 'N/A') . "\n";
-        $promptContext .= "TANGGAL MULAI: " . $project->start_date . " | DEADLINE: " . ($project->deadline ?: 'Tidak ada') . "\n";
-        $promptContext .= "PROGRES KESELURUHAN: " . $progressPercent . "%\n";
-        $promptContext .= "TOTAL TASK: " . $totalTasks . " (Selesai: " . $completedTasks . ", Terlambat/Overdue: " . $overdueTasks . ")\n\n";
-
-        $promptContext .= "TIM / ANGGOTA PROYEK:\n" . (!empty($memberNames) ? implode(', ', $memberNames) : 'Belum ada anggota') . "\n\n";
+        $promptContext  = 'PROYEK: ' . $project->name . "\n";
+        $promptContext .= 'KLIEN: ' . (get_company_name($project->clientid) ?: 'N/A') . "\n";
+        $promptContext .= 'TANGGAL MULAI: ' . $project->start_date . ' | DEADLINE: ' . ($project->deadline ?: 'Tidak ada') . "\n";
+        $promptContext .= 'PROGRES KESELURUHAN: ' . $progressPercent . "%\n";
+        $promptContext .= 'TOTAL TASK: ' . $totalTasks . ' (Selesai: ' . $completedTasks . ', Terlambat/Overdue: ' . $overdueTasks . ")\n\n";
+        $promptContext .= 'TIM / ANGGOTA PROYEK: ' . (!empty($memberNames) ? implode(', ', $memberNames) : 'Belum ada anggota') . "\n\n";
 
         if (!empty($milestoneList)) {
-            $promptContext .= "MILESTONE PROYEK:\n" . implode("\n", $milestoneList) . "\n\n";
+            $promptContext .= 'MILESTONE PROYEK:' . "\n" . implode("\n", $milestoneList) . "\n\n";
         }
-
         if (!empty($taskSummaryList)) {
-            $promptContext .= "DAFTAR TASK PROYEK:\n" . implode("\n", array_slice($taskSummaryList, 0, 35)) . "\n\n";
+            $promptContext .= 'DAFTAR TASK PROYEK:' . "\n" . implode("\n", array_slice($taskSummaryList, 0, 35)) . "\n\n";
         }
 
-        $systemMessage = "Anda adalah Senior Executive AI Project Management Consultant & Business Analyst profesional di ERP Digivla. Tugas Anda adalah memberikan ringkasan eksekutif cerdas (Executive Summary) berdasarkan data aktual proyek.";
+        $systemMessage = 'Anda adalah Senior Executive AI Project Management Consultant & Business Analyst profesional. Tugas Anda adalah memberikan ringkasan eksekutif cerdas (Executive Summary) berdasarkan data aktual proyek.';
 
         $userInstruction = "Analisis data proyek berikut ini secara komprehensif dan buatkan ringkasan eksekutif dalam Bahasa Indonesia.\n\n"
             . "Susun laporan dengan format Markdown terstruktur yang rapi dengan 4 bagian utama:\n"
             . "1. 📊 Rekapitulasi Task & Progres Proyek\n"
-            . "   - Ringkasan total task, persentase penyelesaian, task yang selesai vs pending.\n"
-            . "   - Status progres milestone utama.\n"
-            . "2. ⚠️ Hal-hal Penting & Risiko (Attention Needed)\n"
-            . "   - Identifikasi task yang terlambat (overdue) atau mendekati deadline.\n"
-            . "   - Potensi kendala / bottleneck pada proyek.\n"
+            . "   - Ringkasan total task, persentase penyelesaian, task selesai vs pending.\n"
+            . "   - Status milestone utama.\n"
+            . "2. ⚠️ Hal-hal Penting & Risiko\n"
+            . "   - Task terlambat (overdue) atau mendekati deadline.\n"
+            . "   - Potensi kendala / bottleneck.\n"
             . "3. 🎯 Rekomendasi & Langkah Strategis\n"
-            . "   - Tindakan konkret yang direkomendasikan untuk Project Manager / Admin agar proyek selesai tepat waktu.\n"
-            . "4. 👥 Catatan & Saran untuk Personil / Tim Terlibat\n"
-            . "   - Evaluasi dan masukan spesifik untuk anggota tim yang terlibat berdasarkan task & beban kerja mereka.\n\n"
+            . "   - Tindakan konkret untuk Project Manager / Admin.\n"
+            . "4. 👥 Catatan & Saran untuk Personil / Tim\n"
+            . "   - Evaluasi dan masukan spesifik per anggota tim.\n\n"
             . "DATA PROYEK AKTUAL:\n" . $promptContext;
 
-        $modelsToTry = ['qwen2.5:7b', 'llama3.1:8b', 'qwen2.5:3b', 'qwen2.5:14b'];
-        $response = false;
-        $curlError = '';
-        $usedModel = 'qwen2.5:7b';
+        // --- Call Ollama API ---
+        $modelsToTry = ['qwen2.5:7b', 'llama3.1:8b', 'qwen2.5:3b'];
+        $usedModel   = 'qwen2.5:7b';
+        $summaryMarkdown = null;
 
         foreach ($modelsToTry as $modelName) {
-            $apiPayload = [
+            $payload = json_encode([
                 'model'    => $modelName,
                 'messages' => [
                     ['role' => 'system', 'content' => $systemMessage],
-                    ['role' => 'user', 'content' => $userInstruction]
+                    ['role' => 'user',   'content' => $userInstruction],
                 ],
-                'stream'   => false,
-                'options'  => [
-                    'num_predict' => 1000
-                ]
-            ];
+                'stream'  => false,
+                'options' => ['num_predict' => 800],
+            ]);
 
             $ch = curl_init('http://188.166.208.79:11434/api/chat');
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($apiPayload));
-            curl_setopt($ch, CURLOPT_TIMEOUT, 120);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_POST           => true,
+                CURLOPT_POSTFIELDS     => $payload,
+                CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+                CURLOPT_TIMEOUT        => 300,
+                CURLOPT_CONNECTTIMEOUT => 15,
+            ]);
 
-            $rawResponse = curl_exec($ch);
-            $curlError = curl_error($ch);
+            $raw   = curl_exec($ch);
             curl_close($ch);
 
-            if ($rawResponse) {
-                $decoded = json_decode($rawResponse, true);
+            if ($raw) {
+                $decoded = json_decode($raw, true);
                 if (isset($decoded['message']['content'])) {
-                    $response = $decoded;
-                    $usedModel = $modelName;
+                    $summaryMarkdown = $decoded['message']['content'];
+                    $usedModel       = $modelName;
                     break;
                 }
             }
         }
 
-        if (!$response) {
-            echo json_encode(['success' => false, 'message' => 'Gagal menghubungi AI Server atau model tidak tersedia: ' . ($curlError ?: 'Model error')]);
+        // --- Save result ---
+        if ($summaryMarkdown) {
+            $this->db->where('id', $id);
+            $this->db->update(db_prefix() . 'projects', [
+                'ai_summary'              => $summaryMarkdown,
+                'ai_summary_last_updated' => date('Y-m-d H:i:s'),
+                'ai_summary_status'       => 'done',
+                'ai_summary_model'        => $usedModel,
+            ]);
+        } else {
+            $this->db->where('id', $id);
+            $this->db->update(db_prefix() . 'projects', ['ai_summary_status' => 'error']);
+        }
+    }
+
+    /**
+     * Polling endpoint — returns current AI summary status & content if done.
+     */
+    public function get_ai_summary_status($id)
+    {
+        $project = $this->db->where('id', $id)->get(db_prefix() . 'projects')->row();
+        if (!$project) {
+            echo json_encode(['status' => 'error', 'message' => 'Proyek tidak ditemukan.']);
             return;
         }
 
-        $summaryMarkdown = $response['message']['content'];
-        $now = date('Y-m-d H:i:s');
+        $status = isset($project->ai_summary_status) ? $project->ai_summary_status : null;
 
-        $this->db->where('id', $id);
-        $this->db->update(db_prefix() . 'projects', [
-            'ai_summary'              => $summaryMarkdown,
-            'ai_summary_last_updated' => $now
-        ]);
-
-        $Parsedown = new Parsedown();
-        $summaryHtml = $Parsedown->text($summaryMarkdown);
-
-        echo json_encode([
-            'success'      => true,
-            'summary_html' => $summaryHtml,
-            'model_used'   => $usedModel,
-            'last_updated' => _dt($now)
-        ]);
+        if ($status === 'done' && !empty($project->ai_summary)) {
+            $Parsedown = new Parsedown();
+            echo json_encode([
+                'status'       => 'done',
+                'summary_html' => $Parsedown->text($project->ai_summary),
+                'model_used'   => $project->ai_summary_model ?? 'qwen2.5:7b',
+                'last_updated' => _dt($project->ai_summary_last_updated),
+            ]);
+        } elseif ($status === 'error') {
+            // Reset status so user can retry
+            $this->db->where('id', $id)->update(db_prefix() . 'projects', ['ai_summary_status' => null]);
+            echo json_encode(['status' => 'error', 'message' => 'AI gagal menganalisis proyek. Silakan coba lagi.']);
+        } else {
+            echo json_encode(['status' => 'processing']);
+        }
     }
 }
