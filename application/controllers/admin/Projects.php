@@ -1241,9 +1241,18 @@ class Projects extends AdminController
             return;
         }
 
-        // Mark as processing
+        // Mark as processing with requested model
+        $selectedModel = $this->input->post('ai_model') ?: 'qwen2.5:3b';
+        $allowedModels = ['qwen2.5:3b', 'llama3.2:3b', 'qwen2.5:7b', 'llama3.1:8b'];
+        if (!in_array($selectedModel, $allowedModels)) {
+            $selectedModel = 'qwen2.5:3b';
+        }
+
         $this->db->where('id', $id);
-        $this->db->update(db_prefix() . 'projects', ['ai_summary_status' => 'processing']);
+        $this->db->update(db_prefix() . 'projects', [
+            'ai_summary_status' => 'processing',
+            'ai_summary_model'  => $selectedModel,
+        ]);
 
         // Run background PHP CLI process
         $phpBin  = PHP_BINARY;
@@ -1251,7 +1260,7 @@ class Projects extends AdminController
         $logFile = sys_get_temp_dir() . '/ai_summary_' . $id . '.log';
         $cmd     = escapeshellcmd($phpBin)
             . ' ' . escapeshellarg($script)
-            . ' admin/projects/run_ai_summary_job/' . (int)$id
+            . ' admin/projects/run_ai_summary_job/' . (int)$id . '/' . escapeshellarg($selectedModel)
             . ' > ' . escapeshellarg($logFile)
             . ' 2>&1 &';
         exec($cmd);
@@ -1263,7 +1272,7 @@ class Projects extends AdminController
      * Background worker — called via CLI only (never via HTTP directly).
      * Builds prompt, calls Ollama API, saves result to DB.
      */
-    public function run_ai_summary_job($id)
+    public function run_ai_summary_job($id, $targetModel = 'qwen2.5:3b')
     {
         // Allow CLI or local loopback only
         if (php_sapi_name() !== 'cli' && $_SERVER['REMOTE_ADDR'] !== '127.0.0.1') {
@@ -1288,79 +1297,83 @@ class Projects extends AdminController
             $memberNames[] = $m['firstname'] . ' ' . $m['lastname'];
         }
 
+        // --- Build super-compact prompt context (pre-aggregated) ---
         $tasks = $this->projects_model->get_tasks($id);
-        $taskSummaryList = [];
-        $totalTasks = count($tasks);
+        $totalTasks     = count($tasks);
         $completedTasks = 0;
-        $overdueTasks = 0;
-        $today = date('Y-m-d');
+        $overdueTasks   = [];
+        $ongoingTasks   = [];
+        $today          = date('Y-m-d');
 
         foreach ($tasks as $t) {
-            $statusName  = format_task_status($t['status'], false, true);
             $isCompleted = ($t['status'] == Tasks_model::STATUS_COMPLETE);
-            if ($isCompleted) $completedTasks++;
+            if ($isCompleted) {
+                $completedTasks++;
+                continue;
+            }
 
-            $isOverdue = (!$isCompleted && !empty($t['duedate']) && $t['duedate'] < $today);
-            if ($isOverdue) $overdueTasks++;
-
-            $assignees     = $this->tasks_model->get_task_assignees($t['id']);
-            $assigneeNames = array_column($assignees, 'full_name');
-            $taskSummaryList[] = '- ' . $t['name'] . ' [' . strip_tags($statusName) . ']'
-                . ($isOverdue ? ' [OVERDUE]' : '')
-                . (!empty($assigneeNames) ? ' — ' . implode(', ', $assigneeNames) : '');
+            $isOverdue = (!empty($t['duedate']) && $t['duedate'] < $today);
+            if ($isOverdue) {
+                $overdueTasks[] = $t['name'] . ' (deadline: ' . $t['duedate'] . ')';
+            } elseif (count($ongoingTasks) < 5) {
+                $ongoingTasks[] = $t['name'];
+            }
         }
 
-        $milestones   = $this->projects_model->get_milestones($id);
-        $milestoneList = [];
-        foreach ($milestones as $m) {
-            $milestoneList[] = '- ' . $m['name'] . ' (Due: ' . (!empty($m['due_date']) ? $m['due_date'] : '-') . ')';
+        $milestones = $this->projects_model->get_milestones($id);
+        $milestoneNames = [];
+        foreach (array_slice($milestones, 0, 4) as $m) {
+            $milestoneNames[] = $m['name'];
         }
 
         $progressPercent = $this->projects_model->calc_progress($id);
 
-        // --- Build compact prompt (shorter = faster) ---
-        $lines = [
-            'Proyek: ' . $project->name,
-            'Deadline: ' . ($project->deadline ?: 'N/A'),
-            'Progres: ' . $progressPercent . '%',
-            'Task: ' . $totalTasks . ' total, ' . $completedTasks . ' selesai, ' . $overdueTasks . ' overdue',
-            'Tim: ' . (!empty($memberNames) ? implode(', ', $memberNames) : '-'),
-        ];
-        if (!empty($milestoneList)) {
-            $lines[] = 'Milestone: ' . implode('; ', array_slice($milestoneList, 0, 5));
+        $promptContext  = 'Proyek: ' . $project->name . " | Progres: " . $progressPercent . "% | Deadline: " . ($project->deadline ?: '-') . "\n";
+        $promptContext .= 'Task: ' . $totalTasks . ' total (' . $completedTasks . ' selesai, ' . count($overdueTasks) . ' overdue)' . "\n";
+        if (!empty($memberNames)) {
+            $promptContext .= 'Tim: ' . implode(', ', array_slice($memberNames, 0, 8)) . "\n";
         }
-        if (!empty($taskSummaryList)) {
-            // Only top 15 tasks for speed
-            $lines[] = 'Task list:' . "\n" . implode("\n", array_slice($taskSummaryList, 0, 15));
+        if (!empty($overdueTasks)) {
+            $promptContext .= 'Task Overdue: ' . implode(', ', array_slice($overdueTasks, 0, 4)) . "\n";
         }
-        $promptContext = implode("\n", $lines);
+        if (!empty($ongoingTasks)) {
+            $promptContext .= 'Task Berjalan: ' . implode(', ', $ongoingTasks) . "\n";
+        }
+        if (!empty($milestoneNames)) {
+            $promptContext .= 'Milestone: ' . implode(', ', $milestoneNames) . "\n";
+        }
 
-        $systemMessage = 'Kamu adalah AI project manager assistant. Buat ringkasan proyek singkat, padat, dan actionable dalam Bahasa Indonesia.';
+        $systemMessage = 'Kamu AI Project Assistant. Buat executive summary proyek singkat, padat poin-poin penting dalam Bahasa Indonesia.';
 
-        $userInstruction = "Buat ringkasan eksekutif proyek dalam Bahasa Indonesia. Format Markdown, singkat dan padat:\n\n"
-            . "## 📊 Status Proyek\n(progres, task selesai vs overdue)\n\n"
-            . "## ⚠️ Perhatian\n(task terlambat, risiko)\n\n"
-            . "## 🎯 Rekomendasi\n(3-5 tindakan konkret)\n\n"
-            . "## 👥 Saran Tim\n(per anggota jika relevan)\n\n"
-            . "DATA:\n" . $promptContext;
+        $userInstruction = "Buat ringkasan eksekutif proyek berikut dalam Markdown singkat dan to-the-point:\n"
+            . "## 📊 Status\n(ringkasan progres & task)\n"
+            . "## ⚠️ Risiko & Kendala\n(task overdue & potensi masalah)\n"
+            . "## 🎯 Rekomendasi Aksi\n(2-4 langkah konkret untuk PM/Tim)\n\n"
+            . "DATA PROYEK:\n" . $promptContext;
 
-        // --- Call Ollama API (fast model first) ---
-        $modelsToTry = ['qwen2.5:3b', 'qwen2.5:7b', 'llama3.2:3b'];
-        $usedModel   = 'qwen2.5:3b';
+        // --- Call Ollama API with selected model first, then fallback ---
+        $fallbackList = ['llama3.2:3b', 'qwen2.5:3b', 'qwen2.5:7b', 'llama3.1:8b'];
+        $modelsToTry  = array_unique(array_merge([$targetModel], $fallbackList));
+        $usedModel    = $targetModel;
         $summaryMarkdown = null;
+
+        // Fast token limit: 250 tokens for 3b, 350 for 7b/8b
+        $numPredict = (strpos($targetModel, '3b') !== false) ? 250 : 350;
 
         foreach ($modelsToTry as $modelName) {
             $payload = json_encode([
-                'model'    => $modelName,
-                'messages' => [
+                'model'      => $modelName,
+                'messages'   => [
                     ['role' => 'system', 'content' => $systemMessage],
                     ['role' => 'user',   'content' => $userInstruction],
                 ],
-                'stream'  => false,
-                'options' => [
-                    'num_predict'   => 400,   // ringkas dan cepat (~3-8 detik)
-                    'temperature'   => 0.3,
-                    'top_p'         => 0.85,
+                'stream'     => false,
+                'keep_alive' => '30m', // Keep model in memory to eliminate warm-up latency
+                'options'    => [
+                    'num_ctx'       => 1024, // Reduces memory allocation & prefill latency
+                    'num_predict'   => $numPredict,
+                    'temperature'   => 0.2,
+                    'top_p'         => 0.8,
                 ],
             ]);
 
@@ -1370,11 +1383,11 @@ class Projects extends AdminController
                 CURLOPT_POST           => true,
                 CURLOPT_POSTFIELDS     => $payload,
                 CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
-                CURLOPT_TIMEOUT        => 180,
-                CURLOPT_CONNECTTIMEOUT => 15,
+                CURLOPT_TIMEOUT        => 120,
+                CURLOPT_CONNECTTIMEOUT => 10,
             ]);
 
-            $raw   = curl_exec($ch);
+            $raw = curl_exec($ch);
             curl_close($ch);
 
             if ($raw) {
