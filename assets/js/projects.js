@@ -462,15 +462,25 @@ function projectFileGoogleDriveSave(pickData) {
   saveProjectExternalFile(pickData, "gdrive");
 }
 function saveProjectExternalFile(files, externalType) {
-  $.post(admin_url + "projects/add_external_file", {
+  var pid = typeof project_id !== "undefined" ? project_id : $('input[name="project_id"]').val();
+  var postData = {
     files: files,
-    project_id: project_id,
+    project_id: pid,
     external: externalType,
-    visible_to_customer: $("#pf_visible_to_customer").prop("checked"),
-  }).done(function () {
-    var location = window.location.href;
-    window.location.href = location.split("?")[0] + "?group=project_files";
-  });
+    visible_to_customer: $("#pf_visible_to_customer").prop("checked") ? 1 : 0,
+  };
+  if (typeof csrfData !== "undefined") {
+    postData[csrfData["token_name"]] = csrfData["hash"];
+  }
+  $.post(admin_url + "projects/add_external_file", postData)
+    .done(function () {
+      var location = window.location.href;
+      window.location.href = location.split("?")[0] + "?group=project_files";
+    })
+    .fail(function (xhr) {
+      alert_float("danger", "Gagal menyimpan file external: " + (xhr.responseText || xhr.statusText));
+      $("#save_gdrive_link_btn").prop("disabled", false).removeClass("disabled");
+    });
 }
 
 $("body").on("click", "#save_gdrive_link_btn", function () {

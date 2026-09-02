@@ -2379,7 +2379,13 @@ class Projects_model extends App_Model
         $insert['external_link'] = $data['files'][0]['link'];
 
         $path_parts = pathinfo($data['files'][0]['name']);
-        $insert['filetype'] = get_mime_by_extension('.' . $path_parts['extension']);
+        if (isset($data['files'][0]['mime']) && !empty($data['files'][0]['mime'])) {
+            $insert['filetype'] = $data['files'][0]['mime'];
+        } elseif (isset($path_parts['extension']) && !empty($path_parts['extension'])) {
+            $insert['filetype'] = get_mime_by_extension('.' . $path_parts['extension']);
+        } else {
+            $insert['filetype'] = 'gdrive/link';
+        }
 
         if (isset($data['files'][0]['thumbnailLink'])) {
             $insert['thumbnail_link'] = $data['files'][0]['thumbnailLink'];
