@@ -9,7 +9,7 @@
     </a>
   </div>
   <div class="pull-right mbot20">
-   <button type="button" class="btn btn-default" data-toggle="modal" data-target="#gdrive_file_modal">
+   <button type="button" class="btn btn-default" onclick="$('#gdrive_file_modal').modal('show'); return false;">
     <i class="fa-brands fa-google tw-text-red-500 tw-mr-1" aria-hidden="true"></i>
     <?php echo _l('choose_from_google_drive'); ?>
   </button>
