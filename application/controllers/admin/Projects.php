@@ -317,6 +317,11 @@ class Projects extends AdminController
                 $data['expenses_table'] = App_table::find('project_expenses');
             } elseif ($group == 'project_activity') {
                 $data['activity'] = $this->projects_model->get_activity($id);
+            } elseif ($group == 'project_ai_summary') {
+                if (!$this->db->field_exists('ai_summary', db_prefix() . 'projects')) {
+                    $this->db->query('ALTER TABLE `' . db_prefix() . 'projects` ADD `ai_summary` TEXT NULL, ADD `ai_summary_last_updated` DATETIME NULL');
+                }
+                $data['project'] = $this->projects_model->get($id);
             } elseif ($group == 'project_notes') {
                 $data['staff_notes'] = $this->projects_model->get_staff_notes($id);
             } elseif ($group == 'project_contracts') {
@@ -1203,5 +1208,173 @@ class Projects extends AdminController
 
             echo json_encode($members);
         }
+    }
+
+    public function generate_ai_summary($id)
+    {
+        if (!$this->db->field_exists('ai_summary', db_prefix() . 'projects')) {
+            $this->db->query('ALTER TABLE `' . db_prefix() . 'projects` ADD `ai_summary` TEXT NULL, ADD `ai_summary_last_updated` DATETIME NULL');
+        }
+
+        $project = $this->projects_model->get($id);
+        if (!$project) {
+            echo json_encode(['success' => false, 'message' => 'Proyek tidak ditemukan.']);
+            return;
+        }
+
+        $this->load->model('tasks_model');
+
+        // 1. Members
+        $members = $this->projects_model->get_project_members($id);
+        $memberNames = [];
+        foreach ($members as $m) {
+            $memberNames[] = $m['firstname'] . ' ' . $m['lastname'];
+        }
+
+        // 2. Tasks
+        $tasks = $this->projects_model->get_tasks($id);
+        $taskSummaryList = [];
+        $totalTasks = count($tasks);
+        $completedTasks = 0;
+        $overdueTasks = 0;
+        $today = date('Y-m-d');
+
+        foreach ($tasks as $t) {
+            $statusName = format_task_status($t['status'], false, true);
+            $isCompleted = ($t['status'] == Tasks_model::STATUS_COMPLETE);
+            if ($isCompleted) {
+                $completedTasks++;
+            }
+
+            $isOverdue = (!$isCompleted && !empty($t['duedate']) && $t['duedate'] < $today);
+            if ($isOverdue) {
+                $overdueTasks++;
+            }
+
+            $assignees = $this->tasks_model->get_task_assignees($t['id']);
+            $assigneeNames = [];
+            foreach ($assignees as $a) {
+                $assigneeNames[] = $a['full_name'];
+            }
+
+            $taskSummaryList[] = sprintf(
+                "- Task: %s | Status: %s | Priority: %s | Due: %s | Assignees: %s%s",
+                $t['name'],
+                strip_tags($statusName),
+                task_priority($t['priority']),
+                !empty($t['duedate']) ? $t['duedate'] : 'Tanpa tenggat',
+                !empty($assigneeNames) ? implode(', ', $assigneeNames) : 'Belum di-assign',
+                $isOverdue ? ' [OVERDUE/TERLAMBAT]' : ''
+            );
+        }
+
+        // 3. Milestones
+        $milestones = $this->projects_model->get_milestones($id);
+        $milestoneList = [];
+        foreach ($milestones as $m) {
+            $milestoneList[] = sprintf(
+                "- Milestone: %s (Due: %s)",
+                $m['name'],
+                !empty($m['due_date']) ? $m['due_date'] : '-'
+            );
+        }
+
+        $progressPercent = $this->projects_model->calc_progress($id);
+
+        // 4. Construct Data Text for AI
+        $promptContext = "PROYEK: " . $project->name . "\n";
+        $promptContext .= "KLIEN: " . (get_company_name($project->clientid) ?: 'N/A') . "\n";
+        $promptContext .= "TANGGAL MULAI: " . $project->start_date . " | DEADLINE: " . ($project->deadline ?: 'Tidak ada') . "\n";
+        $promptContext .= "PROGRES KESELURUHAN: " . $progressPercent . "%\n";
+        $promptContext .= "TOTAL TASK: " . $totalTasks . " (Selesai: " . $completedTasks . ", Terlambat/Overdue: " . $overdueTasks . ")\n\n";
+
+        $promptContext .= "TIM / ANGGOTA PROYEK:\n" . (!empty($memberNames) ? implode(', ', $memberNames) : 'Belum ada anggota') . "\n\n";
+
+        if (!empty($milestoneList)) {
+            $promptContext .= "MILESTONE PROYEK:\n" . implode("\n", $milestoneList) . "\n\n";
+        }
+
+        if (!empty($taskSummaryList)) {
+            $promptContext .= "DAFTAR TASK PROYEK:\n" . implode("\n", array_slice($taskSummaryList, 0, 35)) . "\n\n";
+        }
+
+        $systemMessage = "Anda adalah Senior Executive AI Project Management Consultant & Business Analyst profesional di ERP Digivla. Tugas Anda adalah memberikan ringkasan eksekutif cerdas (Executive Summary) berdasarkan data aktual proyek.";
+
+        $userInstruction = "Analisis data proyek berikut ini secara komprehensif dan buatkan ringkasan eksekutif dalam Bahasa Indonesia.\n\n"
+            . "Susun laporan dengan format Markdown terstruktur yang rapi dengan 4 bagian utama:\n"
+            . "1. 📊 Rekapitulasi Task & Progres Proyek\n"
+            . "   - Ringkasan total task, persentase penyelesaian, task yang selesai vs pending.\n"
+            . "   - Status progres milestone utama.\n"
+            . "2. ⚠️ Hal-hal Penting & Risiko (Attention Needed)\n"
+            . "   - Identifikasi task yang terlambat (overdue) atau mendekati deadline.\n"
+            . "   - Potensi kendala / bottleneck pada proyek.\n"
+            . "3. 🎯 Rekomendasi & Langkah Strategis\n"
+            . "   - Tindakan konkret yang direkomendasikan untuk Project Manager / Admin agar proyek selesai tepat waktu.\n"
+            . "4. 👥 Catatan & Saran untuk Personil / Tim Terlibat\n"
+            . "   - Evaluasi dan masukan spesifik untuk anggota tim yang terlibat berdasarkan task & beban kerja mereka.\n\n"
+            . "DATA PROYEK AKTUAL:\n" . $promptContext;
+
+        $modelsToTry = ['qwen2.5:14b', 'qwen2.5:7b', 'llama3.1:8b', 'qwen2.5:3b'];
+        $response = false;
+        $curlError = '';
+        $usedModel = 'qwen2.5:14b';
+
+        foreach ($modelsToTry as $modelName) {
+            $apiPayload = [
+                'model'    => $modelName,
+                'messages' => [
+                    ['role' => 'system', 'content' => $systemMessage],
+                    ['role' => 'user', 'content' => $userInstruction]
+                ],
+                'stream'   => false,
+                'options'  => [
+                    'num_predict' => 1000
+                ]
+            ];
+
+            $ch = curl_init('http://188.166.208.79:11434/api/chat');
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($apiPayload));
+            curl_setopt($ch, CURLOPT_TIMEOUT, 120);
+
+            $rawResponse = curl_exec($ch);
+            $curlError = curl_error($ch);
+            curl_close($ch);
+
+            if ($rawResponse) {
+                $decoded = json_decode($rawResponse, true);
+                if (isset($decoded['message']['content'])) {
+                    $response = $decoded;
+                    $usedModel = $modelName;
+                    break;
+                }
+            }
+        }
+
+        if (!$response) {
+            echo json_encode(['success' => false, 'message' => 'Gagal menghubungi AI Server atau model tidak tersedia: ' . ($curlError ?: 'Model error')]);
+            return;
+        }
+
+        $summaryMarkdown = $response['message']['content'];
+        $now = date('Y-m-d H:i:s');
+
+        $this->db->where('id', $id);
+        $this->db->update(db_prefix() . 'projects', [
+            'ai_summary'              => $summaryMarkdown,
+            'ai_summary_last_updated' => $now
+        ]);
+
+        $Parsedown = new Parsedown();
+        $summaryHtml = $Parsedown->text($summaryMarkdown);
+
+        echo json_encode([
+            'success'      => true,
+            'summary_html' => $summaryHtml,
+            'model_used'   => $usedModel,
+            'last_updated' => _dt($now)
+        ]);
     }
 }

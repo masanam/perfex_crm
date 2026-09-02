@@ -181,6 +181,13 @@ function app_init_project_tabs()
         'position'                  => 60,
         'linked_to_customer_option' => ['view_activity_log'],
     ]);
+
+    $CI->app_tabs->add_project_tab('project_ai_summary', [
+        'name'     => 'AI Summary',
+        'icon'     => 'fa-solid fa-robot',
+        'view'     => 'admin/projects/project_ai_summary',
+        'position' => 61,
+    ]);
 }
 
 /**
