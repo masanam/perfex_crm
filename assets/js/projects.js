@@ -464,7 +464,7 @@ function projectFileGoogleDriveSave(pickData) {
 function saveProjectExternalFile(files, externalType) {
   var pid = typeof project_id !== "undefined" ? project_id : $('input[name="project_id"]').val();
   var postData = {
-    files: files,
+    files: JSON.stringify(files),
     project_id: pid,
     external: externalType,
     visible_to_customer: $("#pf_visible_to_customer").prop("checked") ? 1 : 0,
@@ -478,7 +478,7 @@ function saveProjectExternalFile(files, externalType) {
       window.location.href = location.split("?")[0] + "?group=project_files";
     })
     .fail(function (xhr) {
-      alert_float("danger", "Gagal menyimpan file external: " + (xhr.responseText || xhr.statusText));
+      alert_float("danger", "Gagal menyimpan file: " + (xhr.responseText || xhr.statusText));
       $("#save_gdrive_link_btn").prop("disabled", false).removeClass("disabled");
     });
 }

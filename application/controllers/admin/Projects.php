@@ -446,11 +446,23 @@ class Projects extends AdminController
         if ($this->input->post()) {
             $data                        = [];
             $data['project_id']          = $this->input->post('project_id');
-            $data['files']               = $this->input->post('files');
             $data['external']            = $this->input->post('external');
-            $data['visible_to_customer'] = ($this->input->post('visible_to_customer') == 'true' ? 1 : 0);
+            $visible                     = $this->input->post('visible_to_customer');
+            $data['visible_to_customer'] = ($visible === 'true' || $visible === '1' || $visible === true) ? 1 : 0;
             $data['staffid']             = get_staff_user_id();
-            $this->projects_model->add_external_file($data);
+
+            // Support files sent as JSON string OR as standard PHP array
+            $raw_files = $this->input->post('files');
+            if (is_string($raw_files)) {
+                $decoded = json_decode($raw_files, true);
+                $data['files'] = is_array($decoded) ? $decoded : [];
+            } else {
+                $data['files'] = is_array($raw_files) ? array_values($raw_files) : [];
+            }
+
+            if (!empty($data['files']) && !empty($data['project_id'])) {
+                $this->projects_model->add_external_file($data);
+            }
         }
     }
 
