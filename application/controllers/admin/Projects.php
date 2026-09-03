@@ -1236,10 +1236,10 @@ class Projects extends AdminController
             return;
         }
 
-        $selectedModel = $this->input->post('ai_model') ?: 'qwen';
-        $allowedModels = ['qwen', 'qwen-coder', 'openai', 'mistral', 'local:qwen2.5:3b', 'local:llama3.2:3b'];
+        $selectedModel = $this->input->post('ai_model') ?: 'qwen-plus';
+        $allowedModels = ['qwen-plus', 'qwen-turbo', 'qwen-max', 'qwen-flash', 'qwen', 'local:qwen2.5:3b'];
         if (!in_array($selectedModel, $allowedModels)) {
-            $selectedModel = 'qwen';
+            $selectedModel = 'qwen-plus';
         }
 
         $this->load->model('tasks_model');
@@ -1348,128 +1348,81 @@ class Projects extends AdminController
         $usedModel       = $selectedModel;
         $curlError       = '';
 
-        // --- Priority 1: Free Cloud Qwen Gateway (No API Key needed, ultra-fast global cloud) ---
-        if (strpos($selectedModel, 'local:') === false) {
-            $cloudModel = $selectedModel; // 'qwen' or 'qwen-coder' or 'openai'
+        $apiKey   = 'sk-ws-H.DDIDLEI.2FSk.MEYCIQDYcRS96RGJPBnu76F2aRNvY6QaaNjj8IlGZ9R9ERvCfgIhALTy6bJir-bq3-3NWC5lWA6dMhRYdJkG0Vyd9Atw9p7y';
+        $endpoint = 'https://ws-8m543cnyx3a7d404.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions';
 
-            // Try Cloud OpenAI-compatible endpoint with full token allowance
-            $payload = json_encode([
-                'model'       => $cloudModel,
-                'messages'    => [
-                    ['role' => 'system', 'content' => $systemMessage],
-                    ['role' => 'user',   'content' => $userInstruction],
-                ],
-                'temperature' => 0.25,
-                'max_tokens'  => 3500,
-            ]);
+        // --- Priority 1: Official Alibaba Cloud Model Studio ---
+        $payload = json_encode([
+            'model'       => $selectedModel,
+            'messages'    => [
+                ['role' => 'system', 'content' => $systemMessage],
+                ['role' => 'user',   'content' => $userInstruction],
+            ],
+            'temperature' => 0.25,
+            'max_tokens'  => 3500,
+        ]);
 
+        $ch = curl_init($endpoint);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => $payload,
+            CURLOPT_HTTPHEADER     => [
+                'Content-Type: application/json',
+                'Authorization: Bearer ' . $apiKey,
+            ],
+            CURLOPT_TIMEOUT        => 60,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_SSL_VERIFYPEER => false,
+        ]);
+
+        $raw = curl_exec($ch);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        if ($raw) {
+            $decoded = json_decode($raw, true);
+            if (isset($decoded['choices'][0]['message']['content']) && !empty($decoded['choices'][0]['message']['content'])) {
+                $summaryMarkdown = trim($decoded['choices'][0]['message']['content']);
+                $usedModel       = 'Qwen AI (' . $selectedModel . ')';
+            }
+        }
+
+        // --- Fallback: Free Cloud Gateway if official API has issue ---
+        if (!$summaryMarkdown) {
             $ch = curl_init('https://text.pollinations.ai/openai/chat/completions');
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_POST           => true,
-                CURLOPT_POSTFIELDS     => $payload,
+                CURLOPT_POSTFIELDS     => json_encode([
+                    'model'       => 'qwen',
+                    'messages'    => [
+                        ['role' => 'system', 'content' => $systemMessage],
+                        ['role' => 'user',   'content' => $userInstruction],
+                    ],
+                    'temperature' => 0.25,
+                    'max_tokens'  => 3500,
+                ]),
                 CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
-                CURLOPT_TIMEOUT        => 60,
-                CURLOPT_CONNECTTIMEOUT => 10,
+                CURLOPT_TIMEOUT        => 45,
+                CURLOPT_CONNECTTIMEOUT => 8,
                 CURLOPT_SSL_VERIFYPEER => false,
             ]);
 
             $raw = curl_exec($ch);
-            $curlError = curl_error($ch);
             curl_close($ch);
 
             if ($raw) {
                 $decoded = json_decode($raw, true);
-                if (isset($decoded['choices'][0]['message']['content']) && !empty($decoded['choices'][0]['message']['content'])) {
+                if (isset($decoded['choices'][0]['message']['content'])) {
                     $summaryMarkdown = trim($decoded['choices'][0]['message']['content']);
-                    $usedModel       = 'Qwen Cloud (' . $cloudModel . ')';
-                }
-            }
-
-            // Fallback: Direct Raw text endpoint
-            if (!$summaryMarkdown) {
-                $rawPayload = json_encode([
-                    'messages' => [
-                        ['role' => 'system', 'content' => $systemMessage],
-                        ['role' => 'user',   'content' => $userInstruction],
-                    ],
-                    'model'    => $cloudModel,
-                    'seed'     => rand(100, 99999),
-                ]);
-
-                $ch = curl_init('https://text.pollinations.ai/');
-                curl_setopt_array($ch, [
-                    CURLOPT_RETURNTRANSFER => true,
-                    CURLOPT_POST           => true,
-                    CURLOPT_POSTFIELDS     => $rawPayload,
-                    CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
-                    CURLOPT_TIMEOUT        => 60,
-                    CURLOPT_CONNECTTIMEOUT => 10,
-                    CURLOPT_SSL_VERIFYPEER => false,
-                ]);
-
-                $rawText = curl_exec($ch);
-                curl_close($ch);
-
-                if ($rawText && strlen($rawText) > 50 && strpos($rawText, 'error') === false) {
-                    $summaryMarkdown = trim($rawText);
-                    $usedModel       = 'Qwen Cloud (' . $cloudModel . ')';
-                }
-            }
-        }
-
-        // --- Priority 2: Fallback to local Ollama if Cloud is unreachable or user chose local ---
-        if (!$summaryMarkdown) {
-            $localModelName = str_replace('local:', '', $selectedModel);
-            if ($localModelName === 'qwen' || $localModelName === 'qwen-coder') {
-                $localModelName = 'qwen2.5:3b';
-            }
-
-            $modelsToTry = array_unique([$localModelName, 'qwen2.5:3b', 'llama3.2:3b', 'qwen2.5:7b']);
-            foreach ($modelsToTry as $mName) {
-                $payload = json_encode([
-                    'model'      => $mName,
-                    'messages'   => [
-                        ['role' => 'system', 'content' => $systemMessage],
-                        ['role' => 'user',   'content' => $userInstruction],
-                    ],
-                    'stream'     => false,
-                    'keep_alive' => '60m',
-                    'options'    => [
-                        'num_ctx'     => 2048,
-                        'num_predict' => 450,
-                        'temperature' => 0.25,
-                        'top_p'       => 0.85,
-                    ],
-                ]);
-
-                $ch = curl_init('http://188.166.208.79:11434/api/chat');
-                curl_setopt_array($ch, [
-                    CURLOPT_RETURNTRANSFER => true,
-                    CURLOPT_POST           => true,
-                    CURLOPT_POSTFIELDS     => $payload,
-                    CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
-                    CURLOPT_TIMEOUT        => 60,
-                    CURLOPT_CONNECTTIMEOUT => 6,
-                ]);
-
-                $raw = curl_exec($ch);
-                $curlError = curl_error($ch);
-                curl_close($ch);
-
-                if ($raw) {
-                    $decoded = json_decode($raw, true);
-                    if (isset($decoded['message']['content'])) {
-                        $summaryMarkdown = $decoded['message']['content'];
-                        $usedModel       = 'Ollama Local (' . $mName . ')';
-                        break;
-                    }
+                    $usedModel       = 'Qwen Cloud (qwen)';
                 }
             }
         }
 
         if (!$summaryMarkdown) {
-            echo json_encode(['success' => false, 'message' => 'Gagal menghubungi AI Server: ' . ($curlError ?: 'Model error')]);
+            echo json_encode(['success' => false, 'message' => 'Gagal menghubungi server Qwen AI: ' . ($curlError ?: 'Model error')]);
             return;
         }
 
@@ -1495,7 +1448,7 @@ class Projects extends AdminController
     }
 
     /**
-     * Real-time Server-Sent Events (SSE) streaming for AI Summary.
+     * Real-time Server-Sent Events (SSE) streaming for AI Summary via Alibaba Cloud Model Studio.
      * Streams tokens directly to browser word-by-word with zero delay.
      */
     public function stream_ai_summary($id)
@@ -1642,103 +1595,91 @@ class Projects extends AdminController
         $fullSummary = '';
         $usedModel   = 'Qwen Cloud (' . $selectedModel . ')';
 
-        // --- Stream from Pollinations OpenAI Streaming endpoint ---
-        if (strpos($selectedModel, 'local:') === false) {
-            $cloudModel = $selectedModel;
-            $payload = json_encode([
-                'model'       => $cloudModel,
-                'messages'    => [
-                    ['role' => 'system', 'content' => $systemMessage],
-                    ['role' => 'user',   'content' => $userInstruction],
-                ],
-                'temperature' => 0.25,
-                'max_tokens'  => 3500,
-                'stream'      => true,
-            ]);
+        $apiKey   = 'sk-ws-H.DDIDLEI.2FSk.MEYCIQDYcRS96RGJPBnu76F2aRNvY6QaaNjj8IlGZ9R9ERvCfgIhALTy6bJir-bq3-3NWC5lWA6dMhRYdJkG0Vyd9Atw9p7y';
+        $endpoint = 'https://ws-8m543cnyx3a7d404.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions';
 
-            $ch = curl_init('https://text.pollinations.ai/openai/chat/completions');
-            curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER => false,
-                CURLOPT_POST           => true,
-                CURLOPT_POSTFIELDS     => $payload,
-                CURLOPT_HTTPHEADER     => [
-                    'Content-Type: application/json',
-                    'Accept: text/event-stream, text/plain, */*',
-                    'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                ],
-                CURLOPT_TIMEOUT        => 90,
-                CURLOPT_CONNECTTIMEOUT => 10,
-                CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_WRITEFUNCTION  => function ($ch, $data) use (&$fullSummary) {
-                    $lines = explode("\n", $data);
-                    foreach ($lines as $line) {
-                        $line = trim($line);
-                        if (empty($line) || $line === 'data: [DONE]') {
-                            continue;
-                        }
-                        if (strpos($line, 'data: ') === 0) {
-                            $jsonStr = substr($line, 6);
-                            $decoded = json_decode($jsonStr, true);
-                            if (isset($decoded['choices'][0]['delta']['content'])) {
-                                $token = $decoded['choices'][0]['delta']['content'];
-                                $fullSummary .= $token;
-                                echo "data: " . json_encode(['token' => $token]) . "\n\n";
-                                flush();
-                            } elseif (isset($decoded['choices'][0]['message']['content'])) {
-                                $token = $decoded['choices'][0]['message']['content'];
-                                $fullSummary .= $token;
-                                echo "data: " . json_encode(['token' => $token]) . "\n\n";
-                                flush();
-                            }
-                        } else {
-                            // Check if full JSON without data: prefix
-                            $decoded = json_decode($line, true);
-                            if (isset($decoded['choices'][0]['message']['content'])) {
-                                $token = $decoded['choices'][0]['message']['content'];
-                                $fullSummary .= $token;
-                                echo "data: " . json_encode(['token' => $token]) . "\n\n";
-                                flush();
-                            }
+        // --- Stream from Alibaba Cloud Model Studio ---
+        $payload = json_encode([
+            'model'       => $selectedModel,
+            'messages'    => [
+                ['role' => 'system', 'content' => $systemMessage],
+                ['role' => 'user',   'content' => $userInstruction],
+            ],
+            'temperature' => 0.25,
+            'max_tokens'  => 3500,
+            'stream'      => true,
+        ]);
+
+        $ch = curl_init($endpoint);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => false,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => $payload,
+            CURLOPT_HTTPHEADER     => [
+                'Content-Type: application/json',
+                'Authorization: Bearer ' . $apiKey,
+                'Accept: text/event-stream',
+            ],
+            CURLOPT_TIMEOUT        => 90,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_WRITEFUNCTION  => function ($ch, $data) use (&$fullSummary) {
+                $lines = explode("\n", $data);
+                foreach ($lines as $line) {
+                    $line = trim($line);
+                    if (empty($line) || $line === 'data: [DONE]') {
+                        continue;
+                    }
+                    if (strpos($line, 'data: ') === 0) {
+                        $jsonStr = substr($line, 6);
+                        $decoded = json_decode($jsonStr, true);
+                        if (isset($decoded['choices'][0]['delta']['content'])) {
+                            $token = $decoded['choices'][0]['delta']['content'];
+                            $fullSummary .= $token;
+                            echo "data: " . json_encode(['token' => $token]) . "\n\n";
+                            flush();
                         }
                     }
-                    return strlen($data);
                 }
-            ]);
+                return strlen($data);
+            }
+        ]);
 
-            curl_exec($ch);
-            curl_close($ch);
+        curl_exec($ch);
+        curl_close($ch);
 
-            // Fallback 1: Direct Raw Text request with progressive client stream
-            if (empty($fullSummary)) {
-                $rawPayload = json_encode([
-                    'messages' => [
+        // Fallback: Non-streaming call if SSE returned empty
+        if (empty($fullSummary)) {
+            $ch = curl_init($endpoint);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_POST           => true,
+                CURLOPT_POSTFIELDS     => json_encode([
+                    'model'       => $selectedModel,
+                    'messages'    => [
                         ['role' => 'system', 'content' => $systemMessage],
                         ['role' => 'user',   'content' => $userInstruction],
                     ],
-                    'model' => $cloudModel,
-                    'seed'  => rand(100, 99999),
-                ]);
+                    'temperature' => 0.25,
+                    'max_tokens'  => 3500,
+                    'stream'      => false,
+                ]),
+                CURLOPT_HTTPHEADER     => [
+                    'Content-Type: application/json',
+                    'Authorization: Bearer ' . $apiKey,
+                ],
+                CURLOPT_TIMEOUT        => 60,
+                CURLOPT_CONNECTTIMEOUT => 10,
+                CURLOPT_SSL_VERIFYPEER => false,
+            ]);
 
-                $ch = curl_init('https://text.pollinations.ai/');
-                curl_setopt_array($ch, [
-                    CURLOPT_RETURNTRANSFER => true,
-                    CURLOPT_POST           => true,
-                    CURLOPT_POSTFIELDS     => $rawPayload,
-                    CURLOPT_HTTPHEADER     => [
-                        'Content-Type: application/json',
-                        'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                    ],
-                    CURLOPT_TIMEOUT        => 60,
-                    CURLOPT_CONNECTTIMEOUT => 10,
-                    CURLOPT_SSL_VERIFYPEER => false,
-                ]);
+            $raw = curl_exec($ch);
+            curl_close($ch);
 
-                $rawText = curl_exec($ch);
-                curl_close($ch);
-
-                if ($rawText && strlen($rawText) > 50 && strpos($rawText, 'error') === false) {
-                    $fullSummary = trim($rawText);
-                    // Stream out chunks progressively so the UI receives it smoothly
+            if ($raw) {
+                $decoded = json_decode($raw, true);
+                if (isset($decoded['choices'][0]['message']['content'])) {
+                    $fullSummary = trim($decoded['choices'][0]['message']['content']);
                     $words = preg_split('/(?<=\s)/u', $fullSummary);
                     foreach ($words as $w) {
                         echo "data: " . json_encode(['token' => $w]) . "\n\n";
