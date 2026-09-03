@@ -1475,47 +1475,61 @@ class Projects extends AdminController
                     }
                 }
             }
-        } else {
-            // Explicit Local Ollama (only if user explicitly selected local)
+        }
+
+        // --- Fallback to Local Ollama with full 4000 tokens if Cloud returned empty or local was selected ---
+        if (!$summaryMarkdown) {
             $localModelName = str_replace('local:', '', $selectedModel);
-            $ch = curl_init('http://188.166.208.79:11434/api/chat');
-            curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_POST           => true,
-                CURLOPT_POSTFIELDS     => json_encode([
-                    'model'      => $localModelName,
-                    'messages'   => [
-                        ['role' => 'system', 'content' => $systemMessage],
-                        ['role' => 'user',   'content' => $userInstruction],
-                    ],
-                    'stream'     => false,
-                    'keep_alive' => '60m',
-                    'options'    => [
-                        'num_ctx'     => 4096,
-                        'num_predict' => 4000,
-                        'temperature' => 0.25,
-                        'top_p'       => 0.85,
-                    ],
-                ]),
-                CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
-                CURLOPT_TIMEOUT        => 90,
-                CURLOPT_CONNECTTIMEOUT => 6,
-            ]);
+            if (!in_array($localModelName, ['qwen2.5:3b', 'qwen2.5:7b', 'llama3.2:3b', 'llama3.1:8b'])) {
+                $localModelName = 'qwen2.5:3b';
+            }
 
-            $raw = curl_exec($ch);
-            curl_close($ch);
+            $modelsToTry = array_unique([$localModelName, 'qwen2.5:3b', 'llama3.2:3b', 'qwen2.5:7b']);
+            foreach ($modelsToTry as $mName) {
+                $ch = curl_init('http://188.166.208.79:11434/api/chat');
+                curl_setopt_array($ch, [
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_POST           => true,
+                    CURLOPT_POSTFIELDS     => json_encode([
+                        'model'      => $mName,
+                        'messages'   => [
+                            ['role' => 'system', 'content' => $systemMessage],
+                            ['role' => 'user',   'content' => $userInstruction],
+                        ],
+                        'stream'     => false,
+                        'keep_alive' => '60m',
+                        'options'    => [
+                            'num_ctx'     => 4096,
+                            'num_predict' => 4000,
+                            'temperature' => 0.25,
+                            'top_p'       => 0.85,
+                        ],
+                    ]),
+                    CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+                    CURLOPT_TIMEOUT        => 120,
+                    CURLOPT_CONNECTTIMEOUT => 8,
+                ]);
 
-            if ($raw) {
-                $decoded = json_decode($raw, true);
-                if (isset($decoded['message']['content'])) {
-                    $summaryMarkdown = trim($decoded['message']['content']);
-                    $usedModel       = 'Ollama Local (' . $localModelName . ')';
+                $raw = curl_exec($ch);
+                $ollamaError = curl_error($ch);
+                curl_close($ch);
+
+                if ($raw) {
+                    $decoded = json_decode($raw, true);
+                    if (isset($decoded['message']['content']) && !empty($decoded['message']['content'])) {
+                        $summaryMarkdown = trim($decoded['message']['content']);
+                        $usedModel       = 'Ollama (' . $mName . ')';
+                        break;
+                    }
                 }
             }
         }
 
         if (!$summaryMarkdown) {
-            echo json_encode(['success' => false, 'message' => 'Gagal menghubungi server AI.']);
+            echo json_encode([
+                'success' => false,
+                'message' => 'Gagal menghubungi server AI: ' . ($curlError ?: $ollamaError ?: 'Koneksi timeout.')
+            ]);
             return;
         }
 
