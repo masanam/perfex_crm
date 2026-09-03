@@ -7,7 +7,7 @@
                 <h4 class="tw-font-bold tw-text-lg tw-text-neutral-800 tw-m-0 tw-flex tw-items-center">
                     <i class="fa-solid fa-robot tw-text-indigo-600 tw-mr-2"></i>
                     AI Executive Summary
-                    <span class="label label-info tw-ml-2 tw-text-xs" id="ai_model_badge"><?php echo !empty($project->ai_summary_model) ? $project->ai_summary_model : 'Qwen AI (qwen-plus)'; ?></span>
+                    <span class="label label-info tw-ml-2 tw-text-xs" id="ai_model_badge" style="display:none;"><?php echo !empty($project->ai_summary_model) ? $project->ai_summary_model : ''; ?></span>
                 </h4>
                 <p class="tw-text-xs tw-text-neutral-500 tw-m-0 tw-mt-1" id="ai_summary_time_label">
                     <?php if (!empty($project->ai_summary_last_updated)) { ?>
@@ -18,12 +18,12 @@
                 </p>
             </div>
             <div class="tw-flex tw-items-center tw-gap-2">
-                <div class="tw-inline-block" style="min-width: 250px;">
+                <div class="tw-inline-block" style="min-width: 260px;">
                     <select id="ai_summary_model_select" class="form-control input-sm" style="height: 34px; border-radius: 4px;">
-                        <option value="qwen-plus" selected>🎯 Qwen Plus (Alibaba Cloud - Cerdas & Lengkap)</option>
-                        <option value="qwen-turbo">⚡ Qwen Turbo (Alibaba Cloud - Super Cepat)</option>
+                        <option value="local:qwen2.5:3b" selected>⚡ Ultra Cepat (Qwen 2.5 - Respon Kilat & Realtime)</option>
+                        <option value="qwen-turbo">🚀 Qwen Turbo (Alibaba Cloud - Cepat)</option>
+                        <option value="qwen-plus">🎯 Qwen Plus (Alibaba Cloud - Cerdas & Lengkap)</option>
                         <option value="qwen-max">🧠 Qwen Max (Alibaba Cloud - Analisis Maksimal)</option>
-                        <option value="qwen-flash">⚡ Qwen Flash (Alibaba Cloud - Ultra Cepat)</option>
                     </select>
                 </div>
                 <button type="button" class="btn btn-primary" id="generate_ai_summary_btn" onclick="triggerGenerateAiSummary(); return false;">
@@ -122,7 +122,7 @@
     window.triggerGenerateAiSummary = function() {
         if (_isGenerating) return;
 
-        var selectedModel = $('#ai_summary_model_select').val() || 'qwen-plus';
+        var selectedModel = $('#ai_summary_model_select').val() || 'local:qwen2.5:3b';
         setLoading(true);
 
         $('#ai_summary_empty_state').remove();

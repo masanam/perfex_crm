@@ -1211,7 +1211,7 @@ class Projects extends AdminController
     }
 
     /**
-     * Generate AI Summary directly with optimized Ollama parameters.
+     * Generate AI Summary directly with optimized parameters.
      * Uses session_write_close() so other CRM requests aren't blocked.
      */
     public function generate_ai_summary($id)
@@ -1226,8 +1226,6 @@ class Projects extends AdminController
                 ADD `ai_summary_last_updated` DATETIME NULL,
                 ADD `ai_summary_status` VARCHAR(20) NULL DEFAULT NULL,
                 ADD `ai_summary_model` VARCHAR(50) NULL DEFAULT NULL');
-        } else {
-            $this->db->query('ALTER TABLE `' . db_prefix() . 'projects` MODIFY `ai_summary` LONGTEXT NULL');
         }
 
         $project = $this->projects_model->get($id);
@@ -1236,10 +1234,10 @@ class Projects extends AdminController
             return;
         }
 
-        $selectedModel = $this->input->post('ai_model') ?: 'qwen-plus';
-        $allowedModels = ['qwen-plus', 'qwen-turbo', 'qwen-max', 'qwen-flash', 'qwen', 'local:qwen2.5:3b'];
+        $selectedModel = $this->input->post('ai_model') ?: 'local:qwen2.5:3b';
+        $allowedModels = ['local:qwen2.5:3b', 'qwen-turbo', 'qwen-plus', 'qwen-max', 'qwen-flash', 'qwen'];
         if (!in_array($selectedModel, $allowedModels)) {
-            $selectedModel = 'qwen-plus';
+            $selectedModel = 'local:qwen2.5:3b';
         }
 
         $this->load->model('tasks_model');
@@ -1315,7 +1313,6 @@ class Projects extends AdminController
             $promptContext .= "TASK AKTIF BERJALAN:\n" . implode("\n", $ongoingTasks) . "\n\n";
         }
 
-        // Personil workload summary
         $workloadSummary = [];
         foreach ($memberWorkload as $name => $wl) {
             if ($wl['total'] > 0) {
@@ -1334,7 +1331,7 @@ class Projects extends AdminController
             . "## 📊 1. Rekapitulasi & Progres Proyek\n"
             . "- Analisis persentase progres aktual, rincian perbandingan task selesai vs pending/tertunda, dan status pencapaian milestone.\n\n"
             . "## ⚠️ 2. Hal Penting & Analisis Risiko\n"
-. "- Identifikasi task yang terlambat/kritis, potensi hambatan (bottleneck), dan risiko utama timeline proyek.\n\n"
+            . "- Identifikasi task yang terlambat/kritis, potensi hambatan (bottleneck), dan risiko utama timeline proyek.\n\n"
             . "## 🎯 3. Rekomendasi Tindakan Strategis\n"
             . "- Rekomendasi 2-4 langkah prioritas taktis dan strategis untuk Project Manager / Admin agar target tercapai.\n\n"
             . "## 👥 4. Catatan & Saran untuk Personil / Tim Terlibat\n"
@@ -1386,7 +1383,7 @@ class Projects extends AdminController
             }
         }
 
-        // --- Step 2: Ultra Fast Dedicated Server Ollama (qwen2.5:3b - 6-8 seconds) ---
+        // --- Step 2: Fast Dedicated Server Ollama (qwen2.5:3b - 6-8 seconds) ---
         if (!$summaryMarkdown) {
             $localModelName = str_replace('local:', '', $selectedModel);
             if (!in_array($localModelName, ['qwen2.5:3b', 'qwen2.5:7b', 'llama3.2:3b'])) {
@@ -1423,45 +1420,9 @@ class Projects extends AdminController
 
             if ($raw) {
                 $decoded = json_decode($raw, true);
-                if (isset($decoded['message']['content']) && !empty($decoded['message']['content'])) {
+                if (isset($decoded['message']['content'])) {
                     $summaryMarkdown = trim($decoded['message']['content']);
                     $usedModel       = 'Qwen AI Server (' . $localModelName . ')';
-                }
-            }
-        }
-
-        // --- Step 3: Cloud Gateway fallback ---
-        if (!$summaryMarkdown) {
-            $ch = curl_init('https://text.pollinations.ai/openai/chat/completions');
-            curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_POST           => true,
-                CURLOPT_POSTFIELDS     => json_encode([
-                    'model'       => 'qwen',
-                    'messages'    => [
-                        ['role' => 'system', 'content' => $systemMessage],
-                        ['role' => 'user',   'content' => $userInstruction],
-                    ],
-                    'temperature' => 0.25,
-                    'max_tokens'  => 1000,
-                ]),
-                CURLOPT_HTTPHEADER     => [
-                    'Content-Type: application/json',
-                    'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-                ],
-                CURLOPT_TIMEOUT        => 12,
-                CURLOPT_CONNECTTIMEOUT => 3,
-                CURLOPT_SSL_VERIFYPEER => false,
-            ]);
-
-            $raw = curl_exec($ch);
-            curl_close($ch);
-
-            if ($raw) {
-                $decoded = json_decode($raw, true);
-                if (isset($decoded['choices'][0]['message']['content'])) {
-                    $summaryMarkdown = trim($decoded['choices'][0]['message']['content']);
-                    $usedModel       = 'Qwen Cloud (qwen)';
                 }
             }
         }
@@ -1517,7 +1478,7 @@ class Projects extends AdminController
             return;
         }
 
-        $selectedModel = $this->input->get_post('ai_model') ?: 'qwen-plus';
+        $selectedModel = $this->input->get_post('ai_model') ?: 'local:qwen2.5:3b';
         $localModelName = str_replace('local:', '', $selectedModel);
         if (!in_array($localModelName, ['qwen2.5:3b', 'qwen2.5:7b', 'llama3.2:3b'])) {
             $localModelName = 'qwen2.5:3b';
