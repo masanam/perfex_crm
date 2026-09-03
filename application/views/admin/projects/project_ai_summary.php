@@ -7,7 +7,7 @@
                 <h4 class="tw-font-bold tw-text-lg tw-text-neutral-800 tw-m-0 tw-flex tw-items-center">
                     <i class="fa-solid fa-robot tw-text-indigo-600 tw-mr-2"></i>
                     AI Executive Summary
-                    <span class="label label-info tw-ml-2 tw-text-xs" id="ai_model_badge"><?php echo !empty($project->ai_summary_model) ? $project->ai_summary_model : 'qwen2.5:3b'; ?></span>
+                    <span class="label label-info tw-ml-2 tw-text-xs" id="ai_model_badge"><?php echo !empty($project->ai_summary_model) ? $project->ai_summary_model : 'Qwen Cloud (qwen)'; ?></span>
                 </h4>
                 <p class="tw-text-xs tw-text-neutral-500 tw-m-0 tw-mt-1" id="ai_summary_time_label">
                     <?php if (!empty($project->ai_summary_last_updated)) { ?>
@@ -18,12 +18,12 @@
                 </p>
             </div>
             <div class="tw-flex tw-items-center tw-gap-2">
-                <div class="tw-inline-block" style="min-width: 170px;">
+                <div class="tw-inline-block" style="min-width: 220px;">
                     <select id="ai_summary_model_select" class="form-control input-sm" style="height: 34px; border-radius: 4px;">
-                        <option value="qwen2.5:3b" <?php echo (!isset($project->ai_summary_model) || $project->ai_summary_model == 'qwen2.5:3b') ? 'selected' : ''; ?>>⚡ qwen2.5:3b (Cepat)</option>
-                        <option value="llama3.2:3b" <?php echo (isset($project->ai_summary_model) && $project->ai_summary_model == 'llama3.2:3b') ? 'selected' : ''; ?>>⚡ llama3.2:3b (Cepat)</option>
-                        <option value="qwen2.5:7b" <?php echo (isset($project->ai_summary_model) && $project->ai_summary_model == 'qwen2.5:7b') ? 'selected' : ''; ?>>🎯 qwen2.5:7b (Detail)</option>
-                        <option value="llama3.1:8b" <?php echo (isset($project->ai_summary_model) && $project->ai_summary_model == 'llama3.1:8b') ? 'selected' : ''; ?>>🎯 llama3.1:8b (Detail)</option>
+                        <option value="qwen" selected>⚡ Qwen 2.5 Cloud (Gratis & Cepat)</option>
+                        <option value="qwen-coder">💻 Qwen Coder Cloud</option>
+                        <option value="openai">🤖 GPT-4o Mini Cloud</option>
+                        <option value="local:qwen2.5:3b">🖥️ Ollama Local (qwen2.5:3b)</option>
                     </select>
                 </div>
                 <button type="button" class="btn btn-primary" id="generate_ai_summary_btn" onclick="triggerGenerateAiSummary(); return false;">
@@ -36,8 +36,8 @@
         <!-- Loading indicator -->
         <div id="ai_summary_loading" class="hide tw-p-8 tw-text-center tw-bg-indigo-50 tw-rounded-xl tw-my-4">
             <i class="fa-solid fa-circle-notch fa-spin fa-2x tw-text-indigo-600 tw-mb-3"></i>
-            <p class="tw-font-semibold tw-text-indigo-900 tw-m-0">AI sedang menganalisis proyek...</p>
-            <small class="tw-text-indigo-600">Model <strong id="ai_loading_model">qwen2.5:3b</strong> sedang memproses data task, milestone, dan personil. Harap tunggu.</small>
+            <p class="tw-font-semibold tw-text-indigo-900 tw-m-0">Qwen AI Cloud sedang menganalisis proyek...</p>
+            <small class="tw-text-indigo-600">Sedang menyusun ringkasan lengkap proyek, analisis risiko, dan evaluasi personil.</small>
             <div class="tw-mt-3">
                 <div class="progress" style="height:6px; background:#c7d2fe;">
                     <div class="progress-bar progress-bar-striped active" role="progressbar" style="width:100%; background:#6366f1;"></div>
@@ -53,7 +53,7 @@
             } else { ?>
                 <div class="text-center text-muted tw-py-12" id="ai_summary_empty_state">
                     <i class="fa-solid fa-brain fa-3x tw-mb-3 tw-opacity-30"></i>
-                    <p class="tw-m-0 tw-text-sm">Pilih model dan klik tombol <strong>"Generate AI Summary"</strong> di atas untuk menghasilkan rekapitulasi cerdas, analisis risiko, serta rekomendasi tindakan untuk proyek ini.</p>
+                    <p class="tw-m-0 tw-text-sm">Klik tombol <strong>"Generate AI Summary"</strong> di atas untuk menghasilkan ringkasan eksekutif komprehensif dari <strong>Qwen AI Cloud</strong>.</p>
                 </div>
             <?php } ?>
         </div>
@@ -62,19 +62,18 @@
 
 <script>
 (function() {
-    var _aiSummaryPollTimer = null;
+    var _isGenerating = false;
     var _pid = typeof project_id !== 'undefined' ? project_id : '<?php echo (int)$project->id; ?>';
 
     function setLoading(isLoading, selectedModel) {
         var $btn = $('#generate_ai_summary_btn');
         var $select = $('#ai_summary_model_select');
+        _isGenerating = isLoading;
+
         if (isLoading) {
             $btn.prop('disabled', true).addClass('disabled');
             $select.prop('disabled', true);
             $('#generate_ai_btn_text').text('Menganalisis...');
-            if (selectedModel) {
-                $('#ai_loading_model').text(selectedModel);
-            }
             $('#ai_summary_loading').removeClass('hide');
             $('#ai_summary_content').css('opacity', '0.4');
         } else {
@@ -86,36 +85,10 @@
         }
     }
 
-    function pollStatus() {
-        $.getJSON(admin_url + 'projects/get_ai_summary_status/' + _pid, function(data) {
-            if (data.status === 'done') {
-                clearInterval(_aiSummaryPollTimer);
-                _aiSummaryPollTimer = null;
-                setLoading(false);
-                $('#ai_summary_content').html(data.summary_html);
-                $('#ai_summary_empty_state').remove();
-                $('#ai_summary_time_label').html('Terakhir diperbarui: ' + data.last_updated);
-                if (data.model_used) {
-                    $('#ai_model_badge').text(data.model_used);
-                    $('#ai_summary_model_select').val(data.model_used);
-                }
-                alert_float('success', 'AI Summary berhasil diperbarui!');
-            } else if (data.status === 'error') {
-                clearInterval(_aiSummaryPollTimer);
-                _aiSummaryPollTimer = null;
-                setLoading(false);
-                alert_float('danger', data.message || 'AI gagal menganalisis proyek. Silakan coba lagi.');
-            }
-            // if 'processing', keep polling
-        }).fail(function() {
-            // network hiccup — keep polling, don't stop
-        });
-    }
-
     window.triggerGenerateAiSummary = function() {
-        if (_aiSummaryPollTimer) return; // already running
+        if (_isGenerating) return;
 
-        var selectedModel = $('#ai_summary_model_select').val() || 'qwen2.5:3b';
+        var selectedModel = $('#ai_summary_model_select').val() || 'qwen';
         setLoading(true, selectedModel);
 
         var postData = {
@@ -125,29 +98,34 @@
             postData[csrfData.token_name] = csrfData.hash;
         }
 
-        $.post(admin_url + 'projects/generate_ai_summary/' + _pid, postData)
-            .done(function(response) {
-                var data = typeof response === 'string' ? JSON.parse(response) : response;
-                if (data && (data.status === 'processing' || data.success)) {
-                    // Start polling every 2 seconds
-                    _aiSummaryPollTimer = setInterval(pollStatus, 2000);
-                } else {
-                    setLoading(false);
-                    alert_float('danger', (data && data.message) ? data.message : 'Gagal memulai analisis AI.');
-                }
-            })
-            .fail(function(xhr) {
-                setLoading(false);
-                alert_float('danger', 'Error: ' + (xhr.responseText || 'Gagal menghubungi server.'));
-            });
-    };
+        $.ajax({
+            url: admin_url + 'projects/generate_ai_summary/' + _pid,
+            type: 'POST',
+            data: postData,
+            timeout: 60000
+        }).done(function(response) {
+            var data = typeof response === 'string' ? JSON.parse(response) : response;
+            setLoading(false);
 
-    // If page loads with status=processing, auto-start polling
-    <?php if (isset($project->ai_summary_status) && $project->ai_summary_status === 'processing') { ?>
-    $(function() {
-        setLoading(true, '<?php echo !empty($project->ai_summary_model) ? $project->ai_summary_model : 'qwen2.5:3b'; ?>');
-        _aiSummaryPollTimer = setInterval(pollStatus, 2000);
-    });
-    <?php } ?>
+            if (data && data.success && data.summary_html) {
+                $('#ai_summary_content').html(data.summary_html);
+                $('#ai_summary_empty_state').remove();
+                $('#ai_summary_time_label').html('Terakhir diperbarui: ' + data.last_updated);
+                if (data.model_used) {
+                    $('#ai_model_badge').text(data.model_used);
+                }
+                alert_float('success', 'AI Summary berhasil diperbarui!');
+            } else {
+                alert_float('danger', (data && data.message) ? data.message : 'Gagal menghasilkan AI Summary.');
+            }
+        }).fail(function(xhr, status, error) {
+            setLoading(false);
+            if (status === 'timeout') {
+                alert_float('danger', 'Koneksi timeout. Silakan coba kembali.');
+            } else {
+                alert_float('danger', 'Error: ' + (xhr.responseText || error || 'Gagal menghubungi server AI.'));
+            }
+        });
+    };
 }());
 </script>

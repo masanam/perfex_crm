@@ -1211,20 +1211,19 @@ class Projects extends AdminController
     }
 
     /**
-     * Queue AI Summary generation — respond immediately (no timeout).
-     * The actual Ollama API call runs via background PHP CLI process.
+     * Generate AI Summary directly with optimized Ollama parameters.
+     * Uses session_write_close() so other CRM requests aren't blocked.
      */
     public function generate_ai_summary($id)
     {
-        // Ensure columns exist
+        @set_time_limit(180);
+        @ini_set('max_execution_time', 180);
+
+        // Ensure DB columns exist
         if (!$this->db->field_exists('ai_summary', db_prefix() . 'projects')) {
             $this->db->query('ALTER TABLE `' . db_prefix() . 'projects`
                 ADD `ai_summary` TEXT NULL,
                 ADD `ai_summary_last_updated` DATETIME NULL,
-                ADD `ai_summary_status` VARCHAR(20) NULL DEFAULT NULL,
-                ADD `ai_summary_model` VARCHAR(50) NULL DEFAULT NULL');
-        } elseif (!$this->db->field_exists('ai_summary_status', db_prefix() . 'projects')) {
-            $this->db->query('ALTER TABLE `' . db_prefix() . 'projects`
                 ADD `ai_summary_status` VARCHAR(20) NULL DEFAULT NULL,
                 ADD `ai_summary_model` VARCHAR(50) NULL DEFAULT NULL');
         }
@@ -1235,70 +1234,26 @@ class Projects extends AdminController
             return;
         }
 
-        // Check if already processing
-        if (isset($project->ai_summary_status) && $project->ai_summary_status === 'processing') {
-            echo json_encode(['success' => true, 'status' => 'processing']);
-            return;
-        }
-
-        // Mark as processing with requested model
-        $selectedModel = $this->input->post('ai_model') ?: 'qwen2.5:3b';
-        $allowedModels = ['qwen2.5:3b', 'llama3.2:3b', 'qwen2.5:7b', 'llama3.1:8b'];
+        $selectedModel = $this->input->post('ai_model') ?: 'qwen';
+        $allowedModels = ['qwen', 'qwen-coder', 'openai', 'mistral', 'local:qwen2.5:3b', 'local:llama3.2:3b'];
         if (!in_array($selectedModel, $allowedModels)) {
-            $selectedModel = 'qwen2.5:3b';
+            $selectedModel = 'qwen';
         }
-
-        $this->db->where('id', $id);
-        $this->db->update(db_prefix() . 'projects', [
-            'ai_summary_status' => 'processing',
-            'ai_summary_model'  => $selectedModel,
-        ]);
-
-        // Run background PHP CLI process
-        $phpBin  = PHP_BINARY;
-        $script  = FCPATH . 'index.php';
-        $logFile = sys_get_temp_dir() . '/ai_summary_' . $id . '.log';
-        $cmd     = escapeshellcmd($phpBin)
-            . ' ' . escapeshellarg($script)
-            . ' admin/projects/run_ai_summary_job/' . (int)$id . '/' . escapeshellarg($selectedModel)
-            . ' > ' . escapeshellarg($logFile)
-            . ' 2>&1 &';
-        exec($cmd);
-
-        echo json_encode(['success' => true, 'status' => 'processing']);
-    }
-
-    /**
-     * Background worker — called via CLI only (never via HTTP directly).
-     * Builds prompt, calls Ollama API, saves result to DB.
-     */
-    public function run_ai_summary_job($id, $targetModel = 'qwen2.5:3b')
-    {
-        // Allow CLI or local loopback only
-        if (php_sapi_name() !== 'cli' && $_SERVER['REMOTE_ADDR'] !== '127.0.0.1') {
-            show_404();
-            return;
-        }
-
-        @set_time_limit(0);
-        @ini_set('max_execution_time', 0);
 
         $this->load->model('tasks_model');
 
-        $project = $this->projects_model->get($id);
-        if (!$project) {
-            return;
-        }
-
-        // --- Build prompt context ---
+        // 1. Members and workload tracking
         $members = $this->projects_model->get_project_members($id);
         $memberNames = [];
+        $memberWorkload = [];
         foreach ($members as $m) {
-            $memberNames[] = $m['firstname'] . ' ' . $m['lastname'];
+            $fullName = $m['firstname'] . ' ' . $m['lastname'];
+            $memberNames[] = $fullName;
+            $memberWorkload[$fullName] = ['total' => 0, 'completed' => 0, 'overdue' => 0];
         }
 
-        // --- Build super-compact prompt context (pre-aggregated) ---
-        $tasks = $this->projects_model->get_tasks($id);
+        // 2. Tasks analysis & member workload mapping
+        $tasks          = $this->projects_model->get_tasks($id);
         $totalTasks     = count($tasks);
         $completedTasks = 0;
         $overdueTasks   = [];
@@ -1307,141 +1262,233 @@ class Projects extends AdminController
 
         foreach ($tasks as $t) {
             $isCompleted = ($t['status'] == Tasks_model::STATUS_COMPLETE);
+            $isOverdue   = (!$isCompleted && !empty($t['duedate']) && $t['duedate'] < $today);
+
             if ($isCompleted) {
                 $completedTasks++;
-                continue;
             }
 
-            $isOverdue = (!empty($t['duedate']) && $t['duedate'] < $today);
+            $assignees     = $this->tasks_model->get_task_assignees($t['id']);
+            $assigneeNames = array_column($assignees, 'full_name');
+
+            foreach ($assigneeNames as $name) {
+                if (isset($memberWorkload[$name])) {
+                    $memberWorkload[$name]['total']++;
+                    if ($isCompleted) $memberWorkload[$name]['completed']++;
+                    if ($isOverdue) $memberWorkload[$name]['overdue']++;
+                }
+            }
+
             if ($isOverdue) {
-                $overdueTasks[] = $t['name'] . ' (deadline: ' . $t['duedate'] . ')';
-            } elseif (count($ongoingTasks) < 5) {
-                $ongoingTasks[] = $t['name'];
+                $overdueTasks[] = '- ' . $t['name'] . ' (Due: ' . $t['duedate'] . (!empty($assigneeNames) ? ', PIC: ' . implode(', ', $assigneeNames) : '') . ')';
+            } elseif (!$isCompleted && count($ongoingTasks) < 8) {
+                $ongoingTasks[] = '- ' . $t['name'] . (!empty($assigneeNames) ? ' [PIC: ' . implode(', ', $assigneeNames) . ']' : '');
             }
         }
 
+        // 3. Milestones & Progress
         $milestones = $this->projects_model->get_milestones($id);
-        $milestoneNames = [];
-        foreach (array_slice($milestones, 0, 4) as $m) {
-            $milestoneNames[] = $m['name'];
+        $milestoneList = [];
+        foreach ($milestones as $m) {
+            $milestoneList[] = '- ' . $m['name'] . ' (Target: ' . (!empty($m['due_date']) ? $m['due_date'] : '-') . ')';
         }
 
         $progressPercent = $this->projects_model->calc_progress($id);
 
-        $promptContext  = 'Proyek: ' . $project->name . " | Progres: " . $progressPercent . "% | Deadline: " . ($project->deadline ?: '-') . "\n";
-        $promptContext .= 'Task: ' . $totalTasks . ' total (' . $completedTasks . ' selesai, ' . count($overdueTasks) . ' overdue)' . "\n";
-        if (!empty($memberNames)) {
-            $promptContext .= 'Tim: ' . implode(', ', array_slice($memberNames, 0, 8)) . "\n";
+        // 4. Construct Comprehensive Context for Qwen
+        $promptContext  = "PROYEK: " . $project->name . "\n";
+        $promptContext .= "KLIEN: " . (get_company_name($project->clientid) ?: 'Internal') . "\n";
+        $promptContext .= "JADWAL: " . $project->start_date . " s/d " . ($project->deadline ?: 'Tanpa deadline') . "\n";
+        $promptContext .= "PROGRES: " . $progressPercent . "% | TOTAL TASK: " . $totalTasks . " (Selesai: " . $completedTasks . ", Overdue: " . count($overdueTasks) . ")\n\n";
+
+        if (!empty($milestoneList)) {
+            $promptContext .= "MILESTONES:\n" . implode("\n", array_slice($milestoneList, 0, 4)) . "\n\n";
         }
+
         if (!empty($overdueTasks)) {
-            $promptContext .= 'Task Overdue: ' . implode(', ', array_slice($overdueTasks, 0, 4)) . "\n";
+            $promptContext .= "TASK OVERDUE / TERLAMBAT:\n" . implode("\n", array_slice($overdueTasks, 0, 5)) . "\n\n";
         }
+
         if (!empty($ongoingTasks)) {
-            $promptContext .= 'Task Berjalan: ' . implode(', ', $ongoingTasks) . "\n";
-        }
-        if (!empty($milestoneNames)) {
-            $promptContext .= 'Milestone: ' . implode(', ', $milestoneNames) . "\n";
+            $promptContext .= "TASK AKTIF BERJALAN:\n" . implode("\n", $ongoingTasks) . "\n\n";
         }
 
-        $systemMessage = 'Kamu AI Project Assistant. Buat executive summary proyek singkat, padat poin-poin penting dalam Bahasa Indonesia.';
+        // Personil workload summary
+        $workloadSummary = [];
+        foreach ($memberWorkload as $name => $wl) {
+            if ($wl['total'] > 0) {
+                $workloadSummary[] = $name . ' (' . $wl['total'] . ' task, ' . $wl['completed'] . ' selesai' . ($wl['overdue'] > 0 ? ', ' . $wl['overdue'] . ' overdue' : '') . ')';
+            }
+        }
+        if (!empty($workloadSummary)) {
+            $promptContext .= "BEBAN KERJA PERSONIL:\n" . implode("\n", $workloadSummary) . "\n";
+        } elseif (!empty($memberNames)) {
+            $promptContext .= "PERSONIL PROYEK: " . implode(', ', $memberNames) . "\n";
+        }
 
-        $userInstruction = "Buat ringkasan eksekutif proyek berikut dalam Markdown singkat dan to-the-point:\n"
-            . "## 📊 Status\n(ringkasan progres & task)\n"
-            . "## ⚠️ Risiko & Kendala\n(task overdue & potensi masalah)\n"
-            . "## 🎯 Rekomendasi Aksi\n(2-4 langkah konkret untuk PM/Tim)\n\n"
-            . "DATA PROYEK:\n" . $promptContext;
+        $systemMessage = 'Anda adalah Senior AI Executive Project Consultant (Qwen.ai). Tugas Anda adalah memberikan analisis dan ringkasan eksekutif proyek yang lengkap, terstruktur, tajam, dan siap dieksekusi dalam Bahasa Indonesia.';
 
-        // --- Call Ollama API with selected model first, then fallback ---
-        $fallbackList = ['llama3.2:3b', 'qwen2.5:3b', 'qwen2.5:7b', 'llama3.1:8b'];
-        $modelsToTry  = array_unique(array_merge([$targetModel], $fallbackList));
-        $usedModel    = $targetModel;
+        $userInstruction = "Analisis data proyek berikut dan susun ringkasan eksekutif lengkap dalam format Markdown rapi:\n\n"
+            . "## 📊 Rekapitulasi & Progres Proyek\n"
+            . "- Ringkasan pencapaian progres, rasio task selesai vs tertunda, dan status milestone.\n\n"
+            . "## ⚠️ Hal Penting & Analisis Risiko\n"
+            . "- Sorotan task yang terlambat/kritis dan potensi risiko keterlambatan proyek.\n\n"
+            . "## 🎯 Rekomendasi Tindakan Strategis\n"
+            . "- 2-4 langkah prioritas konkret untuk Project Manager / Admin.\n\n"
+            . "## 👥 Catatan & Saran untuk Personil\n"
+            . "- Masukan spesifik per personil/tim berdasarkan beban kerja dan task yang dipegang.\n\n"
+            . "DATA PROYEK AKTUAL:\n" . $promptContext;
+
+        // Release PHP session lock so user can continue browsing CRM concurrently
+        session_write_close();
+
         $summaryMarkdown = null;
+        $usedModel       = $selectedModel;
+        $curlError       = '';
 
-        // Fast token limit: 250 tokens for 3b, 350 for 7b/8b
-        $numPredict = (strpos($targetModel, '3b') !== false) ? 250 : 350;
+        // --- Priority 1: Free Cloud Qwen Gateway (No API Key needed, ultra-fast global cloud) ---
+        if (strpos($selectedModel, 'local:') === false) {
+            $cloudModel = $selectedModel; // 'qwen' or 'qwen-coder' or 'openai'
 
-        foreach ($modelsToTry as $modelName) {
+            // Try Cloud OpenAI-compatible endpoint
             $payload = json_encode([
-                'model'      => $modelName,
-                'messages'   => [
+                'model'       => $cloudModel,
+                'messages'    => [
                     ['role' => 'system', 'content' => $systemMessage],
                     ['role' => 'user',   'content' => $userInstruction],
                 ],
-                'stream'     => false,
-                'keep_alive' => '30m', // Keep model in memory to eliminate warm-up latency
-                'options'    => [
-                    'num_ctx'       => 1024, // Reduces memory allocation & prefill latency
-                    'num_predict'   => $numPredict,
-                    'temperature'   => 0.2,
-                    'top_p'         => 0.8,
-                ],
+                'temperature' => 0.25,
+                'max_tokens'  => 900,
             ]);
 
-            $ch = curl_init('http://188.166.208.79:11434/api/chat');
+            $ch = curl_init('https://text.pollinations.ai/openai/chat/completions');
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_POST           => true,
                 CURLOPT_POSTFIELDS     => $payload,
                 CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
-                CURLOPT_TIMEOUT        => 120,
-                CURLOPT_CONNECTTIMEOUT => 10,
+                CURLOPT_TIMEOUT        => 30,
+                CURLOPT_CONNECTTIMEOUT => 8,
+                CURLOPT_SSL_VERIFYPEER => false,
             ]);
 
             $raw = curl_exec($ch);
+            $curlError = curl_error($ch);
             curl_close($ch);
 
             if ($raw) {
                 $decoded = json_decode($raw, true);
-                if (isset($decoded['message']['content'])) {
-                    $summaryMarkdown = $decoded['message']['content'];
-                    $usedModel       = $modelName;
-                    break;
+                if (isset($decoded['choices'][0]['message']['content']) && !empty($decoded['choices'][0]['message']['content'])) {
+                    $summaryMarkdown = trim($decoded['choices'][0]['message']['content']);
+                    $usedModel       = 'Qwen Cloud (' . $cloudModel . ')';
+                }
+            }
+
+            // Fallback: Direct Raw text endpoint
+            if (!$summaryMarkdown) {
+                $rawPayload = json_encode([
+                    'messages' => [
+                        ['role' => 'system', 'content' => $systemMessage],
+                        ['role' => 'user',   'content' => $userInstruction],
+                    ],
+                    'model'    => $cloudModel,
+                    'seed'     => rand(100, 99999),
+                ]);
+
+                $ch = curl_init('https://text.pollinations.ai/');
+                curl_setopt_array($ch, [
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_POST           => true,
+                    CURLOPT_POSTFIELDS     => $rawPayload,
+                    CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+                    CURLOPT_TIMEOUT        => 30,
+                    CURLOPT_CONNECTTIMEOUT => 8,
+                    CURLOPT_SSL_VERIFYPEER => false,
+                ]);
+
+                $rawText = curl_exec($ch);
+                curl_close($ch);
+
+                if ($rawText && strlen($rawText) > 50 && strpos($rawText, 'error') === false) {
+                    $summaryMarkdown = trim($rawText);
+                    $usedModel       = 'Qwen Cloud (' . $cloudModel . ')';
                 }
             }
         }
 
-        // --- Save result ---
-        if ($summaryMarkdown) {
-            $this->db->where('id', $id);
-            $this->db->update(db_prefix() . 'projects', [
-                'ai_summary'              => $summaryMarkdown,
-                'ai_summary_last_updated' => date('Y-m-d H:i:s'),
-                'ai_summary_status'       => 'done',
-                'ai_summary_model'        => $usedModel,
-            ]);
-        } else {
-            $this->db->where('id', $id);
-            $this->db->update(db_prefix() . 'projects', ['ai_summary_status' => 'error']);
-        }
-    }
+        // --- Priority 2: Fallback to local Ollama if Cloud is unreachable or user chose local ---
+        if (!$summaryMarkdown) {
+            $localModelName = str_replace('local:', '', $selectedModel);
+            if ($localModelName === 'qwen' || $localModelName === 'qwen-coder') {
+                $localModelName = 'qwen2.5:3b';
+            }
 
-    /**
-     * Polling endpoint — returns current AI summary status & content if done.
-     */
-    public function get_ai_summary_status($id)
-    {
-        $project = $this->db->where('id', $id)->get(db_prefix() . 'projects')->row();
-        if (!$project) {
-            echo json_encode(['status' => 'error', 'message' => 'Proyek tidak ditemukan.']);
+            $modelsToTry = array_unique([$localModelName, 'qwen2.5:3b', 'llama3.2:3b', 'qwen2.5:7b']);
+            foreach ($modelsToTry as $mName) {
+                $payload = json_encode([
+                    'model'      => $mName,
+                    'messages'   => [
+                        ['role' => 'system', 'content' => $systemMessage],
+                        ['role' => 'user',   'content' => $userInstruction],
+                    ],
+                    'stream'     => false,
+                    'keep_alive' => '60m',
+                    'options'    => [
+                        'num_ctx'     => 2048,
+                        'num_predict' => 450,
+                        'temperature' => 0.25,
+                        'top_p'       => 0.85,
+                    ],
+                ]);
+
+                $ch = curl_init('http://188.166.208.79:11434/api/chat');
+                curl_setopt_array($ch, [
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_POST           => true,
+                    CURLOPT_POSTFIELDS     => $payload,
+                    CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+                    CURLOPT_TIMEOUT        => 60,
+                    CURLOPT_CONNECTTIMEOUT => 6,
+                ]);
+
+                $raw = curl_exec($ch);
+                $curlError = curl_error($ch);
+                curl_close($ch);
+
+                if ($raw) {
+                    $decoded = json_decode($raw, true);
+                    if (isset($decoded['message']['content'])) {
+                        $summaryMarkdown = $decoded['message']['content'];
+                        $usedModel       = 'Ollama Local (' . $mName . ')';
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!$summaryMarkdown) {
+            echo json_encode(['success' => false, 'message' => 'Gagal menghubungi AI Server: ' . ($curlError ?: 'Model error')]);
             return;
         }
 
-        $status = isset($project->ai_summary_status) ? $project->ai_summary_status : null;
+        $now = date('Y-m-d H:i:s');
+        $this->db->where('id', $id);
+        $this->db->update(db_prefix() . 'projects', [
+            'ai_summary'              => $summaryMarkdown,
+            'ai_summary_last_updated' => $now,
+            'ai_summary_status'       => 'done',
+            'ai_summary_model'        => $usedModel,
+        ]);
 
-        if ($status === 'done' && !empty($project->ai_summary)) {
-            $Parsedown = new Parsedown();
-            echo json_encode([
-                'status'       => 'done',
-                'summary_html' => $Parsedown->text($project->ai_summary),
-                'model_used'   => $project->ai_summary_model ?? 'qwen2.5:7b',
-                'last_updated' => _dt($project->ai_summary_last_updated),
-            ]);
-        } elseif ($status === 'error') {
-            // Reset status so user can retry
-            $this->db->where('id', $id)->update(db_prefix() . 'projects', ['ai_summary_status' => null]);
-            echo json_encode(['status' => 'error', 'message' => 'AI gagal menganalisis proyek. Silakan coba lagi.']);
-        } else {
-            echo json_encode(['status' => 'processing']);
-        }
+        $Parsedown   = new Parsedown();
+        $summaryHtml = $Parsedown->text($summaryMarkdown);
+
+        echo json_encode([
+            'success'      => true,
+            'status'       => 'done',
+            'summary_html' => $summaryHtml,
+            'model_used'   => $usedModel,
+            'last_updated' => _dt($now),
+        ]);
     }
 }
