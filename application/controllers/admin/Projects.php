@@ -1661,7 +1661,11 @@ class Projects extends AdminController
                 CURLOPT_RETURNTRANSFER => false,
                 CURLOPT_POST           => true,
                 CURLOPT_POSTFIELDS     => $payload,
-                CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'Accept: text/event-stream'],
+                CURLOPT_HTTPHEADER     => [
+                    'Content-Type: application/json',
+                    'Accept: text/event-stream, text/plain, */*',
+                    'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                ],
                 CURLOPT_TIMEOUT        => 90,
                 CURLOPT_CONNECTTIMEOUT => 10,
                 CURLOPT_SSL_VERIFYPEER => false,
@@ -1680,6 +1684,20 @@ class Projects extends AdminController
                                 $fullSummary .= $token;
                                 echo "data: " . json_encode(['token' => $token]) . "\n\n";
                                 flush();
+                            } elseif (isset($decoded['choices'][0]['message']['content'])) {
+                                $token = $decoded['choices'][0]['message']['content'];
+                                $fullSummary .= $token;
+                                echo "data: " . json_encode(['token' => $token]) . "\n\n";
+                                flush();
+                            }
+                        } else {
+                            // Check if full JSON without data: prefix
+                            $decoded = json_decode($line, true);
+                            if (isset($decoded['choices'][0]['message']['content'])) {
+                                $token = $decoded['choices'][0]['message']['content'];
+                                $fullSummary .= $token;
+                                echo "data: " . json_encode(['token' => $token]) . "\n\n";
+                                flush();
                             }
                         }
                     }
@@ -1689,6 +1707,100 @@ class Projects extends AdminController
 
             curl_exec($ch);
             curl_close($ch);
+
+            // Fallback 1: Direct Raw Text request with progressive client stream
+            if (empty($fullSummary)) {
+                $rawPayload = json_encode([
+                    'messages' => [
+                        ['role' => 'system', 'content' => $systemMessage],
+                        ['role' => 'user',   'content' => $userInstruction],
+                    ],
+                    'model' => $cloudModel,
+                    'seed'  => rand(100, 99999),
+                ]);
+
+                $ch = curl_init('https://text.pollinations.ai/');
+                curl_setopt_array($ch, [
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_POST           => true,
+                    CURLOPT_POSTFIELDS     => $rawPayload,
+                    CURLOPT_HTTPHEADER     => [
+                        'Content-Type: application/json',
+                        'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    ],
+                    CURLOPT_TIMEOUT        => 60,
+                    CURLOPT_CONNECTTIMEOUT => 10,
+                    CURLOPT_SSL_VERIFYPEER => false,
+                ]);
+
+                $rawText = curl_exec($ch);
+                curl_close($ch);
+
+                if ($rawText && strlen($rawText) > 50 && strpos($rawText, 'error') === false) {
+                    $fullSummary = trim($rawText);
+                    // Stream out chunks progressively so the UI receives it smoothly
+                    $words = preg_split('/(?<=\s)/u', $fullSummary);
+                    foreach ($words as $w) {
+                        echo "data: " . json_encode(['token' => $w]) . "\n\n";
+                        flush();
+                    }
+                }
+            }
+        }
+
+        // Fallback 2: Local Ollama
+        if (empty($fullSummary)) {
+            $localModelName = str_replace('local:', '', $selectedModel);
+            if ($localModelName === 'qwen' || $localModelName === 'qwen-coder') {
+                $localModelName = 'qwen2.5:3b';
+            }
+
+            $payload = json_encode([
+                'model'      => $localModelName,
+                'messages'   => [
+                    ['role' => 'system', 'content' => $systemMessage],
+                    ['role' => 'user',   'content' => $userInstruction],
+                ],
+                'stream'     => true,
+                'keep_alive' => '60m',
+                'options'    => [
+                    'num_ctx'     => 2048,
+                    'num_predict' => 450,
+                    'temperature' => 0.25,
+                    'top_p'       => 0.85,
+                ],
+            ]);
+
+            $ch = curl_init('http://188.166.208.79:11434/api/chat');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => false,
+                CURLOPT_POST           => true,
+                CURLOPT_POSTFIELDS     => $payload,
+                CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+                CURLOPT_TIMEOUT        => 60,
+                CURLOPT_CONNECTTIMEOUT => 6,
+                CURLOPT_WRITEFUNCTION  => function ($ch, $data) use (&$fullSummary) {
+                    $lines = explode("\n", $data);
+                    foreach ($lines as $line) {
+                        $line = trim($line);
+                        if (empty($line)) continue;
+                        $decoded = json_decode($line, true);
+                        if (isset($decoded['message']['content'])) {
+                            $token = $decoded['message']['content'];
+                            $fullSummary .= $token;
+                            echo "data: " . json_encode(['token' => $token]) . "\n\n";
+                            flush();
+                        }
+                    }
+                    return strlen($data);
+                }
+            ]);
+
+            curl_exec($ch);
+            curl_close($ch);
+            if (!empty($fullSummary)) {
+                $usedModel = 'Ollama Local (' . $localModelName . ')';
+            }
         }
 
         // Save result to DB if generated
@@ -1711,7 +1823,7 @@ class Projects extends AdminController
             ]) . "\n\n";
             flush();
         } else {
-            echo "data: " . json_encode(['error' => 'Gagal mendapatkan respon streaming dari AI.']) . "\n\n";
+            echo "data: " . json_encode(['error' => 'Gagal menghubungi server AI. Silakan coba kembali.']) . "\n\n";
             flush();
         }
     }
