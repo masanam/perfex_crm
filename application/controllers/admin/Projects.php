@@ -1493,4 +1493,226 @@ class Projects extends AdminController
             'last_updated' => _dt($now),
         ]);
     }
+
+    /**
+     * Real-time Server-Sent Events (SSE) streaming for AI Summary.
+     * Streams tokens directly to browser word-by-word with zero delay.
+     */
+    public function stream_ai_summary($id)
+    {
+        @set_time_limit(180);
+        @ini_set('max_execution_time', 180);
+        @ini_set('output_buffering', 'off');
+        @ini_set('zlib.output_compression', false);
+
+        // Send SSE headers
+        header('Content-Type: text/event-stream; charset=utf-8');
+        header('Cache-Control: no-cache, no-transform');
+        header('Connection: keep-alive');
+        header('X-Accel-Buffering: no'); // Tell Nginx reverse proxy to disable output buffering
+
+        // Clear and disable all output buffering layers
+        while (ob_get_level() > 0) {
+            ob_end_flush();
+        }
+        ob_implicit_flush(true);
+
+        // Ensure DB columns exist
+        if (!$this->db->field_exists('ai_summary', db_prefix() . 'projects')) {
+            $this->db->query('ALTER TABLE `' . db_prefix() . 'projects`
+                ADD `ai_summary` LONGTEXT NULL,
+                ADD `ai_summary_last_updated` DATETIME NULL,
+                ADD `ai_summary_status` VARCHAR(20) NULL DEFAULT NULL,
+                ADD `ai_summary_model` VARCHAR(50) NULL DEFAULT NULL');
+        }
+
+        $project = $this->projects_model->get($id);
+        if (!$project) {
+            echo "data: " . json_encode(['error' => 'Proyek tidak ditemukan.']) . "\n\n";
+            flush();
+            return;
+        }
+
+        $selectedModel = $this->input->get_post('ai_model') ?: 'qwen';
+        $allowedModels = ['qwen', 'qwen-coder', 'openai', 'mistral', 'local:qwen2.5:3b', 'local:llama3.2:3b'];
+        if (!in_array($selectedModel, $allowedModels)) {
+            $selectedModel = 'qwen';
+        }
+
+        $this->load->model('tasks_model');
+
+        // 1. Members and workload tracking
+        $members = $this->projects_model->get_project_members($id);
+        $memberNames = [];
+        $memberWorkload = [];
+        foreach ($members as $m) {
+            $fullName = $m['firstname'] . ' ' . $m['lastname'];
+            $memberNames[] = $fullName;
+            $memberWorkload[$fullName] = ['total' => 0, 'completed' => 0, 'overdue' => 0];
+        }
+
+        // 2. Tasks analysis & member workload mapping
+        $tasks          = $this->projects_model->get_tasks($id);
+        $totalTasks     = count($tasks);
+        $completedTasks = 0;
+        $overdueTasks   = [];
+        $ongoingTasks   = [];
+        $today          = date('Y-m-d');
+
+        foreach ($tasks as $t) {
+            $isCompleted = ($t['status'] == Tasks_model::STATUS_COMPLETE);
+            $isOverdue   = (!$isCompleted && !empty($t['duedate']) && $t['duedate'] < $today);
+
+            if ($isCompleted) {
+                $completedTasks++;
+            }
+
+            $assignees     = $this->tasks_model->get_task_assignees($t['id']);
+            $assigneeNames = array_column($assignees, 'full_name');
+
+            foreach ($assigneeNames as $name) {
+                if (isset($memberWorkload[$name])) {
+                    $memberWorkload[$name]['total']++;
+                    if ($isCompleted) $memberWorkload[$name]['completed']++;
+                    if ($isOverdue) $memberWorkload[$name]['overdue']++;
+                }
+            }
+
+            if ($isOverdue) {
+                $overdueTasks[] = '- ' . $t['name'] . ' (Due: ' . $t['duedate'] . (!empty($assigneeNames) ? ', PIC: ' . implode(', ', $assigneeNames) : '') . ')';
+            } elseif (!$isCompleted && count($ongoingTasks) < 8) {
+                $ongoingTasks[] = '- ' . $t['name'] . (!empty($assigneeNames) ? ' [PIC: ' . implode(', ', $assigneeNames) . ']' : '');
+            }
+        }
+
+        // 3. Milestones & Progress
+        $milestones = $this->projects_model->get_milestones($id);
+        $milestoneList = [];
+        foreach ($milestones as $m) {
+            $milestoneList[] = '- ' . $m['name'] . ' (Target: ' . (!empty($m['due_date']) ? $m['due_date'] : '-') . ')';
+        }
+
+        $progressPercent = $this->projects_model->calc_progress($id);
+
+        // 4. Construct Comprehensive Context for Qwen
+        $promptContext  = "PROYEK: " . $project->name . "\n";
+        $promptContext .= "KLIEN: " . (get_company_name($project->clientid) ?: 'Internal') . "\n";
+        $promptContext .= "JADWAL: " . $project->start_date . " s/d " . ($project->deadline ?: 'Tanpa deadline') . "\n";
+        $promptContext .= "PROGRES: " . $progressPercent . "% | TOTAL TASK: " . $totalTasks . " (Selesai: " . $completedTasks . ", Overdue: " . count($overdueTasks) . ")\n\n";
+
+        if (!empty($milestoneList)) {
+            $promptContext .= "MILESTONES:\n" . implode("\n", array_slice($milestoneList, 0, 4)) . "\n\n";
+        }
+
+        if (!empty($overdueTasks)) {
+            $promptContext .= "TASK OVERDUE / TERLAMBAT:\n" . implode("\n", array_slice($overdueTasks, 0, 5)) . "\n\n";
+        }
+
+        if (!empty($ongoingTasks)) {
+            $promptContext .= "TASK AKTIF BERJALAN:\n" . implode("\n", $ongoingTasks) . "\n\n";
+        }
+
+        $workloadSummary = [];
+        foreach ($memberWorkload as $name => $wl) {
+            if ($wl['total'] > 0) {
+                $workloadSummary[] = $name . ' (' . $wl['total'] . ' task, ' . $wl['completed'] . ' selesai' . ($wl['overdue'] > 0 ? ', ' . $wl['overdue'] . ' overdue' : '') . ')';
+            }
+        }
+        if (!empty($workloadSummary)) {
+            $promptContext .= "BEBAN KERJA PERSONIL:\n" . implode("\n", $workloadSummary) . "\n";
+        } elseif (!empty($memberNames)) {
+            $promptContext .= "PERSONIL PROYEK: " . implode(', ', $memberNames) . "\n";
+        }
+
+        $systemMessage = 'Anda adalah Senior AI Executive Project Consultant (Qwen.ai). Tugas Anda adalah memberikan analisis dan ringkasan eksekutif proyek yang lengkap, mendalam, terstruktur rapi, dan tuntas dari awal sampai akhir dalam Bahasa Indonesia.';
+
+        $userInstruction = "Analisis data proyek berikut secara menyeluruh dan tuliskan ringkasan eksekutif lengkap dalam format Markdown terstruktur. Pastikan menuliskan SEMUA 4 bagian di bawah ini secara tuntas:\n\n"
+            . "## 📊 1. Rekapitulasi & Progres Proyek\n"
+            . "- Analisis persentase progres aktual, rincian perbandingan task selesai vs pending/tertunda, dan status pencapaian milestone.\n\n"
+            . "## ⚠️ 2. Hal Penting & Analisis Risiko\n"
+            . "- Identifikasi task yang terlambat/kritis, potensi hambatan (bottleneck), dan risiko utama timeline proyek.\n\n"
+            . "## 🎯 3. Rekomendasi Tindakan Strategis\n"
+            . "- Rekomendasi 2-4 langkah prioritas taktis dan strategis untuk Project Manager / Admin agar target tercapai.\n\n"
+            . "## 👥 4. Catatan & Saran untuk Personil / Tim Terlibat\n"
+            . "- Evaluasi beban kerja per personil dan berikan saran penugasan atau distribusi task yang efektif untuk masing-masing anggota tim.\n\n"
+            . "DATA PROYEK AKTUAL:\n" . $promptContext;
+
+        session_write_close();
+
+        $fullSummary = '';
+        $usedModel   = 'Qwen Cloud (' . $selectedModel . ')';
+
+        // --- Stream from Pollinations OpenAI Streaming endpoint ---
+        if (strpos($selectedModel, 'local:') === false) {
+            $cloudModel = $selectedModel;
+            $payload = json_encode([
+                'model'       => $cloudModel,
+                'messages'    => [
+                    ['role' => 'system', 'content' => $systemMessage],
+                    ['role' => 'user',   'content' => $userInstruction],
+                ],
+                'temperature' => 0.25,
+                'max_tokens'  => 3500,
+                'stream'      => true,
+            ]);
+
+            $ch = curl_init('https://text.pollinations.ai/openai/chat/completions');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => false,
+                CURLOPT_POST           => true,
+                CURLOPT_POSTFIELDS     => $payload,
+                CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'Accept: text/event-stream'],
+                CURLOPT_TIMEOUT        => 90,
+                CURLOPT_CONNECTTIMEOUT => 10,
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_WRITEFUNCTION  => function ($ch, $data) use (&$fullSummary) {
+                    $lines = explode("\n", $data);
+                    foreach ($lines as $line) {
+                        $line = trim($line);
+                        if (empty($line) || $line === 'data: [DONE]') {
+                            continue;
+                        }
+                        if (strpos($line, 'data: ') === 0) {
+                            $jsonStr = substr($line, 6);
+                            $decoded = json_decode($jsonStr, true);
+                            if (isset($decoded['choices'][0]['delta']['content'])) {
+                                $token = $decoded['choices'][0]['delta']['content'];
+                                $fullSummary .= $token;
+                                echo "data: " . json_encode(['token' => $token]) . "\n\n";
+                                flush();
+                            }
+                        }
+                    }
+                    return strlen($data);
+                }
+            ]);
+
+            curl_exec($ch);
+            curl_close($ch);
+        }
+
+        // Save result to DB if generated
+        if (!empty($fullSummary)) {
+            $now = date('Y-m-d H:i:s');
+            $this->db->where('id', $id);
+            $this->db->update(db_prefix() . 'projects', [
+                'ai_summary'              => $fullSummary,
+                'ai_summary_last_updated' => $now,
+                'ai_summary_status'       => 'done',
+                'ai_summary_model'        => $usedModel,
+            ]);
+
+            $Parsedown = new Parsedown();
+            echo "data: " . json_encode([
+                'done'         => true,
+                'last_updated' => _dt($now),
+                'model_used'   => $usedModel,
+                'summary_html' => $Parsedown->text($fullSummary),
+            ]) . "\n\n";
+            flush();
+        } else {
+            echo "data: " . json_encode(['error' => 'Gagal mendapatkan respon streaming dari AI.']) . "\n\n";
+            flush();
+        }
+    }
 }

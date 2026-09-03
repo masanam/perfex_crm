@@ -33,39 +33,49 @@
             </div>
         </div>
 
-        <!-- Loading indicator -->
-        <div id="ai_summary_loading" class="hide tw-p-8 tw-text-center tw-bg-indigo-50 tw-rounded-xl tw-my-4">
-            <i class="fa-solid fa-circle-notch fa-spin fa-2x tw-text-indigo-600 tw-mb-3"></i>
-            <p class="tw-font-semibold tw-text-indigo-900 tw-m-0">Qwen AI Cloud sedang menganalisis proyek...</p>
-            <small class="tw-text-indigo-600">Sedang menyusun ringkasan lengkap proyek, analisis risiko, dan evaluasi personil.</small>
-            <div class="tw-mt-3">
-                <div class="progress" style="height:6px; background:#c7d2fe;">
-                    <div class="progress-bar progress-bar-striped active" role="progressbar" style="width:100%; background:#6366f1;"></div>
-                </div>
-            </div>
+        <!-- Live Streaming Status Header -->
+        <div id="ai_streaming_badge" class="hide tw-mb-3 tw-flex tw-items-center tw-text-xs tw-font-semibold tw-text-indigo-700 tw-bg-indigo-50 tw-p-2 tw-rounded-lg tw-border tw-border-indigo-100">
+            <i class="fa-solid fa-circle-notch fa-spin tw-mr-2 tw-text-indigo-600"></i>
+            <span>Qwen AI sedang menulis ringkasan secara real-time...</span>
         </div>
 
         <!-- Content area -->
-        <div id="ai_summary_content" class="tc-content tw-prose tw-max-w-none">
+        <div id="ai_summary_content" class="tc-content tw-prose tw-max-w-none tw-min-h-[120px]">
             <?php if (!empty($project->ai_summary)) {
                 $Parsedown = new Parsedown();
                 echo $Parsedown->text($project->ai_summary);
             } else { ?>
                 <div class="text-center text-muted tw-py-12" id="ai_summary_empty_state">
                     <i class="fa-solid fa-brain fa-3x tw-mb-3 tw-opacity-30"></i>
-                    <p class="tw-m-0 tw-text-sm">Klik tombol <strong>"Generate AI Summary"</strong> di atas untuk menghasilkan ringkasan eksekutif komprehensif dari <strong>Qwen AI Cloud</strong>.</p>
+                    <p class="tw-m-0 tw-text-sm">Klik tombol <strong>"Generate AI Summary"</strong> di atas untuk menghasilkan analisis dan ringkasan eksekutif secara real-time dari <strong>Qwen AI</strong>.</p>
                 </div>
             <?php } ?>
         </div>
     </div>
 </div>
 
+<style>
+.ai-stream-cursor {
+    display: inline-block;
+    width: 8px;
+    height: 16px;
+    background-color: #6366f1;
+    vertical-align: text-bottom;
+    margin-left: 2px;
+    animation: aiCursorBlink 0.8s infinite;
+}
+@keyframes aiCursorBlink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+</style>
+
 <script>
 (function() {
     var _isGenerating = false;
     var _pid = typeof project_id !== 'undefined' ? project_id : '<?php echo (int)$project->id; ?>';
 
-    function setLoading(isLoading, selectedModel) {
+    function setLoading(isLoading) {
         var $btn = $('#generate_ai_summary_btn');
         var $select = $('#ai_summary_model_select');
         _isGenerating = isLoading;
@@ -73,59 +83,136 @@
         if (isLoading) {
             $btn.prop('disabled', true).addClass('disabled');
             $select.prop('disabled', true);
-            $('#generate_ai_btn_text').text('Menganalisis...');
-            $('#ai_summary_loading').removeClass('hide');
-            $('#ai_summary_content').css('opacity', '0.4');
+            $('#generate_ai_btn_text').text('Menulis...');
+            $('#ai_streaming_badge').removeClass('hide');
         } else {
             $btn.prop('disabled', false).removeClass('disabled');
             $select.prop('disabled', false);
             $('#generate_ai_btn_text').text('Generate AI Summary');
-            $('#ai_summary_loading').addClass('hide');
-            $('#ai_summary_content').css('opacity', '1');
+            $('#ai_streaming_badge').addClass('hide');
         }
+    }
+
+    // Helper to format basic markdown on the fly during streaming
+    function formatStreamMarkdown(text) {
+        var escaped = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+
+        // Replace headers
+        escaped = escaped.replace(/^### (.*$)/gim, '<h4 class="tw-font-bold tw-text-base tw-mt-4 tw-mb-2">$1</h4>');
+        escaped = escaped.replace(/^## (.*$)/gim, '<h3 class="tw-font-bold tw-text-lg tw-mt-5 tw-mb-3 tw-text-indigo-900 tw-border-b tw-pb-1">$1</h3>');
+        escaped = escaped.replace(/^# (.*$)/gim, '<h2 class="tw-font-bold tw-text-xl tw-mt-6 tw-mb-3">$1</h2>');
+
+        // Bold
+        escaped = escaped.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        // Italic
+        escaped = escaped.replace(/\*(.*?)\*/g, '<em>$1</em>');
+        // Unordered list items
+        escaped = escaped.replace(/^- (.*$)/gim, '<li class="tw-ml-4">$1</li>');
+
+        // Paragraph linebreaks
+        escaped = escaped.replace(/\n\n/g, '<br><br>');
+        escaped = escaped.replace(/\n/g, '<br>');
+
+        return escaped;
     }
 
     window.triggerGenerateAiSummary = function() {
         if (_isGenerating) return;
 
         var selectedModel = $('#ai_summary_model_select').val() || 'qwen';
-        setLoading(true, selectedModel);
+        setLoading(true);
 
-        var postData = {
-            ai_model: selectedModel
-        };
-        if (typeof csrfData !== 'undefined') {
-            postData[csrfData.token_name] = csrfData.hash;
-        }
+        $('#ai_summary_empty_state').remove();
+        var $content = $('#ai_summary_content');
+        $content.html('<span id="ai_stream_text"></span><span class="ai-stream-cursor"></span>');
 
-        $.ajax({
-            url: admin_url + 'projects/generate_ai_summary/' + _pid,
-            type: 'POST',
-            data: postData,
-            timeout: 60000
-        }).done(function(response) {
-            var data = typeof response === 'string' ? JSON.parse(response) : response;
-            setLoading(false);
+        var streamUrl = admin_url + 'projects/stream_ai_summary/' + _pid + '?ai_model=' + encodeURIComponent(selectedModel);
 
-            if (data && data.success && data.summary_html) {
-                $('#ai_summary_content').html(data.summary_html);
-                $('#ai_summary_empty_state').remove();
-                $('#ai_summary_time_label').html('Terakhir diperbarui: ' + data.last_updated);
-                if (data.model_used) {
-                    $('#ai_model_badge').text(data.model_used);
+        var rawAccumulatedText = '';
+
+        if (window.fetch && window.ReadableStream) {
+            fetch(streamUrl, {
+                method: 'GET',
+                headers: { 'Accept': 'text/event-stream' }
+            }).then(function(response) {
+                if (!response.ok) {
+                    throw new Error('HTTP status ' + response.status);
                 }
-                alert_float('success', 'AI Summary berhasil diperbarui!');
-            } else {
-                alert_float('danger', (data && data.message) ? data.message : 'Gagal menghasilkan AI Summary.');
-            }
-        }).fail(function(xhr, status, error) {
-            setLoading(false);
-            if (status === 'timeout') {
-                alert_float('danger', 'Koneksi timeout. Silakan coba kembali.');
-            } else {
-                alert_float('danger', 'Error: ' + (xhr.responseText || error || 'Gagal menghubungi server AI.'));
-            }
-        });
+                var reader = response.body.getReader();
+                var decoder = new TextDecoder('utf-8');
+                var buffer = '';
+
+                function readChunk() {
+                    return reader.read().then(function(result) {
+                        if (result.done) {
+                            setLoading(false);
+                            $('.ai-stream-cursor').remove();
+                            return;
+                        }
+
+                        buffer += decoder.decode(result.value, { stream: true });
+                        var events = buffer.split("\n\n");
+                        buffer = events.pop(); // keep last incomplete event in buffer
+
+                        for (var i = 0; i < events.length; i++) {
+                            var ev = events[i].trim();
+                            if (ev.indexOf('data: ') === 0) {
+                                var jsonStr = ev.substring(6);
+                                try {
+                                    var data = JSON.parse(jsonStr);
+                                    if (data.token) {
+                                        rawAccumulatedText += data.token;
+                                        $('#ai_stream_text').html(formatStreamMarkdown(rawAccumulatedText));
+                                    } else if (data.done) {
+                                        setLoading(false);
+                                        if (data.summary_html) {
+                                            $content.html(data.summary_html);
+                                        } else {
+                                            $('.ai-stream-cursor').remove();
+                                        }
+                                        if (data.last_updated) {
+                                            $('#ai_summary_time_label').html('Terakhir diperbarui: ' + data.last_updated);
+                                        }
+                                        if (data.model_used) {
+                                            $('#ai_model_badge').text(data.model_used);
+                                        }
+                                        alert_float('success', 'AI Summary berhasil diperbarui!');
+                                        return;
+                                    } else if (data.error) {
+                                        setLoading(false);
+                                        $('.ai-stream-cursor').remove();
+                                        alert_float('danger', data.error);
+                                        return;
+                                    }
+                                } catch (e) {}
+                            }
+                        }
+
+                        return readChunk();
+                    });
+                }
+
+                return readChunk();
+            }).catch(function(err) {
+                setLoading(false);
+                $('.ai-stream-cursor').remove();
+                alert_float('danger', 'Gagal streaming: ' + err.message);
+            });
+        } else {
+            // Fallback for older browsers
+            $.post(admin_url + 'projects/generate_ai_summary/' + _pid, { ai_model: selectedModel }, function(res) {
+                setLoading(false);
+                var data = typeof res === 'string' ? JSON.parse(res) : res;
+                if (data && data.success && data.summary_html) {
+                    $content.html(data.summary_html);
+                    $('#ai_summary_time_label').html('Terakhir diperbarui: ' + data.last_updated);
+                    alert_float('success', 'AI Summary berhasil diperbarui!');
+                }
+            });
+        }
     };
 }());
 </script>
