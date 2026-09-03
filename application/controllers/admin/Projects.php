@@ -1346,6 +1346,7 @@ class Projects extends AdminController
 
         $summaryMarkdown = null;
         $usedModel       = $selectedModel;
+        $curlError       = '';
         $apiKey   = 'sk-ws-H.DDIDLEI.2FSk.MEYCIQDYcRS96RGJPBnu76F2aRNvY6QaaNjj8IlGZ9R9ERvCfgIhALTy6bJir-bq3-3NWC5lWA6dMhRYdJkG0Vyd9Atw9p7y';
         $endpoints = [
             'https://ws-8m543cnyx3a7d404.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions',
@@ -1355,7 +1356,6 @@ class Projects extends AdminController
 
         // --- Priority 1: Official Alibaba Cloud Model Studio ---
         if (strpos($selectedModel, 'local:') === false) {
-            // 1. Try OpenAI compatible format
             $openAiPayload = json_encode([
                 'model'       => $selectedModel,
                 'messages'    => [
@@ -1382,6 +1382,7 @@ class Projects extends AdminController
                 ]);
 
                 $raw = curl_exec($ch);
+                $curlError = curl_error($ch);
                 curl_close($ch);
 
                 if ($raw) {
