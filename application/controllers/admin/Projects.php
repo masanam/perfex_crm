@@ -1219,13 +1219,15 @@ class Projects extends AdminController
         @set_time_limit(180);
         @ini_set('max_execution_time', 180);
 
-        // Ensure DB columns exist
+        // Ensure DB columns exist and support full length text
         if (!$this->db->field_exists('ai_summary', db_prefix() . 'projects')) {
             $this->db->query('ALTER TABLE `' . db_prefix() . 'projects`
-                ADD `ai_summary` TEXT NULL,
+                ADD `ai_summary` LONGTEXT NULL,
                 ADD `ai_summary_last_updated` DATETIME NULL,
                 ADD `ai_summary_status` VARCHAR(20) NULL DEFAULT NULL,
                 ADD `ai_summary_model` VARCHAR(50) NULL DEFAULT NULL');
+        } else {
+            $this->db->query('ALTER TABLE `' . db_prefix() . 'projects` MODIFY `ai_summary` LONGTEXT NULL');
         }
 
         $project = $this->projects_model->get($id);
@@ -1326,17 +1328,17 @@ class Projects extends AdminController
             $promptContext .= "PERSONIL PROYEK: " . implode(', ', $memberNames) . "\n";
         }
 
-        $systemMessage = 'Anda adalah Senior AI Executive Project Consultant (Qwen.ai). Tugas Anda adalah memberikan analisis dan ringkasan eksekutif proyek yang lengkap, terstruktur, tajam, dan siap dieksekusi dalam Bahasa Indonesia.';
+        $systemMessage = 'Anda adalah Senior AI Executive Project Consultant (Qwen.ai). Tugas Anda adalah memberikan analisis dan ringkasan eksekutif proyek yang lengkap, mendalam, terstruktur rapi, dan tuntas dari awal sampai akhir dalam Bahasa Indonesia.';
 
-        $userInstruction = "Analisis data proyek berikut dan susun ringkasan eksekutif lengkap dalam format Markdown rapi:\n\n"
-            . "## 📊 Rekapitulasi & Progres Proyek\n"
-            . "- Ringkasan pencapaian progres, rasio task selesai vs tertunda, dan status milestone.\n\n"
-            . "## ⚠️ Hal Penting & Analisis Risiko\n"
-            . "- Sorotan task yang terlambat/kritis dan potensi risiko keterlambatan proyek.\n\n"
-            . "## 🎯 Rekomendasi Tindakan Strategis\n"
-            . "- 2-4 langkah prioritas konkret untuk Project Manager / Admin.\n\n"
-            . "## 👥 Catatan & Saran untuk Personil\n"
-            . "- Masukan spesifik per personil/tim berdasarkan beban kerja dan task yang dipegang.\n\n"
+        $userInstruction = "Analisis data proyek berikut secara menyeluruh dan tuliskan ringkasan eksekutif lengkap dalam format Markdown terstruktur. Pastikan menuliskan SEMUA 4 bagian di bawah ini secara tuntas tanpa terpotong:\n\n"
+            . "## 📊 1. Rekapitulasi & Progres Proyek\n"
+            . "- Analisis persentase progres aktual, rincian perbandingan task selesai vs pending/tertunda, dan status pencapaian milestone.\n\n"
+            . "## ⚠️ 2. Hal Penting & Analisis Risiko\n"
+            . "- Identifikasi task yang terlambat/kritis, potensi hambatan (bottleneck), dan risiko utama timeline proyek.\n\n"
+            . "## 🎯 3. Rekomendasi Tindakan Strategis\n"
+            . "- Rekomendasi 2-4 langkah prioritas taktis dan strategis untuk Project Manager / Admin agar target tercapai.\n\n"
+            . "## 👥 4. Catatan & Saran untuk Personil / Tim Terlibat\n"
+            . "- Evaluasi beban kerja per personil dan berikan saran penugasan atau distribusi task yang efektif untuk masing-masing anggota tim.\n\n"
             . "DATA PROYEK AKTUAL:\n" . $promptContext;
 
         // Release PHP session lock so user can continue browsing CRM concurrently
@@ -1350,7 +1352,7 @@ class Projects extends AdminController
         if (strpos($selectedModel, 'local:') === false) {
             $cloudModel = $selectedModel; // 'qwen' or 'qwen-coder' or 'openai'
 
-            // Try Cloud OpenAI-compatible endpoint
+            // Try Cloud OpenAI-compatible endpoint with full token allowance
             $payload = json_encode([
                 'model'       => $cloudModel,
                 'messages'    => [
@@ -1358,7 +1360,7 @@ class Projects extends AdminController
                     ['role' => 'user',   'content' => $userInstruction],
                 ],
                 'temperature' => 0.25,
-                'max_tokens'  => 900,
+                'max_tokens'  => 3500,
             ]);
 
             $ch = curl_init('https://text.pollinations.ai/openai/chat/completions');
@@ -1367,8 +1369,8 @@ class Projects extends AdminController
                 CURLOPT_POST           => true,
                 CURLOPT_POSTFIELDS     => $payload,
                 CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
-                CURLOPT_TIMEOUT        => 30,
-                CURLOPT_CONNECTTIMEOUT => 8,
+                CURLOPT_TIMEOUT        => 60,
+                CURLOPT_CONNECTTIMEOUT => 10,
                 CURLOPT_SSL_VERIFYPEER => false,
             ]);
 
@@ -1401,8 +1403,8 @@ class Projects extends AdminController
                     CURLOPT_POST           => true,
                     CURLOPT_POSTFIELDS     => $rawPayload,
                     CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
-                    CURLOPT_TIMEOUT        => 30,
-                    CURLOPT_CONNECTTIMEOUT => 8,
+                    CURLOPT_TIMEOUT        => 60,
+                    CURLOPT_CONNECTTIMEOUT => 10,
                     CURLOPT_SSL_VERIFYPEER => false,
                 ]);
 
