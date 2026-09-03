@@ -181,9 +181,23 @@
                                         alert_float('success', 'AI Summary berhasil diperbarui!');
                                         return;
                                     } else if (data.error) {
-                                        setLoading(false);
-                                        $('.ai-stream-cursor').remove();
-                                        alert_float('danger', data.error);
+                                        $.post(admin_url + 'projects/generate_ai_summary/' + _pid, { ai_model: selectedModel }, function(res) {
+                                            setLoading(false);
+                                            $('.ai-stream-cursor').remove();
+                                            var d = typeof res === 'string' ? JSON.parse(res) : res;
+                                            if (d && d.success && d.summary_html) {
+                                                $content.html(d.summary_html);
+                                                if (d.last_updated) $('#ai_summary_time_label').html('Terakhir diperbarui: ' + d.last_updated);
+                                                if (d.model_used) $('#ai_model_badge').text(d.model_used);
+                                                alert_float('success', 'AI Summary berhasil diperbarui!');
+                                            } else {
+                                                alert_float('danger', (d && d.message) ? d.message : 'Gagal menghasilkan AI Summary.');
+                                            }
+                                        }).fail(function() {
+                                            setLoading(false);
+                                            $('.ai-stream-cursor').remove();
+                                            alert_float('danger', 'Gagal menghubungi server AI.');
+                                        });
                                         return;
                                     }
                                 } catch (e) {}
@@ -199,10 +213,11 @@
                 // Fallback to AJAX POST
                 $.post(admin_url + 'projects/generate_ai_summary/' + _pid, { ai_model: selectedModel }, function(res) {
                     setLoading(false);
+                    $('.ai-stream-cursor').remove();
                     var data = typeof res === 'string' ? JSON.parse(res) : res;
                     if (data && data.success && data.summary_html) {
                         $content.html(data.summary_html);
-                        $('#ai_summary_time_label').html('Terakhir diperbarui: ' + data.last_updated);
+                        if (data.last_updated) $('#ai_summary_time_label').html('Terakhir diperbarui: ' + data.last_updated);
                         if (data.model_used) {
                             $('#ai_model_badge').text(data.model_used);
                         }
@@ -212,6 +227,7 @@
                     }
                 }).fail(function() {
                     setLoading(false);
+                    $('.ai-stream-cursor').remove();
                     alert_float('danger', 'Gagal menghubungi server Qwen AI.');
                 });
             });

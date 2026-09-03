@@ -1355,13 +1355,15 @@ class Projects extends AdminController
 
         // --- Priority 1: Official Alibaba Cloud Model Studio ---
         if (strpos($selectedModel, 'local:') === false) {
-            $payload = json_encode([
+            // 1. Try OpenAI compatible format
+            $openAiPayload = json_encode([
                 'model'       => $selectedModel,
                 'messages'    => [
                     ['role' => 'system', 'content' => $systemMessage],
                     ['role' => 'user',   'content' => $userInstruction],
                 ],
                 'temperature' => 0.25,
+                'max_tokens'  => 4000,
             ]);
 
             foreach ($endpoints as $ep) {
@@ -1369,18 +1371,17 @@ class Projects extends AdminController
                 curl_setopt_array($ch, [
                     CURLOPT_RETURNTRANSFER => true,
                     CURLOPT_POST           => true,
-                    CURLOPT_POSTFIELDS     => $payload,
+                    CURLOPT_POSTFIELDS     => $openAiPayload,
                     CURLOPT_HTTPHEADER     => [
                         'Content-Type: application/json',
                         'Authorization: Bearer ' . $apiKey,
                     ],
-                    CURLOPT_TIMEOUT        => 60,
-                    CURLOPT_CONNECTTIMEOUT => 10,
+                    CURLOPT_TIMEOUT        => 45,
+                    CURLOPT_CONNECTTIMEOUT => 5,
                     CURLOPT_SSL_VERIFYPEER => false,
                 ]);
 
                 $raw = curl_exec($ch);
-                $curlError = curl_error($ch);
                 curl_close($ch);
 
                 if ($raw) {
@@ -1393,7 +1394,52 @@ class Projects extends AdminController
                 }
             }
 
-            // Fallback: Free Cloud Gateway if official API has network block
+            // 2. Try DashScope Native API format if OpenAI compatible returned empty
+            if (!$summaryMarkdown) {
+                $nativeEndpoint = 'https://ws-8m543cnyx3a7d404.ap-southeast-1.maas.aliyuncs.com/api/v1/services/aigc/text-generation/generation';
+                $nativePayload = json_encode([
+                    'model' => $selectedModel,
+                    'input' => [
+                        'messages' => [
+                            ['role' => 'system', 'content' => $systemMessage],
+                            ['role' => 'user',   'content' => $userInstruction],
+                        ]
+                    ],
+                    'parameters' => [
+                        'result_format' => 'message'
+                    ]
+                ]);
+
+                $ch = curl_init($nativeEndpoint);
+                curl_setopt_array($ch, [
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_POST           => true,
+                    CURLOPT_POSTFIELDS     => $nativePayload,
+                    CURLOPT_HTTPHEADER     => [
+                        'Content-Type: application/json',
+                        'Authorization: Bearer ' . $apiKey,
+                    ],
+                    CURLOPT_TIMEOUT        => 45,
+                    CURLOPT_CONNECTTIMEOUT => 5,
+                    CURLOPT_SSL_VERIFYPEER => false,
+                ]);
+
+                $raw = curl_exec($ch);
+                curl_close($ch);
+
+                if ($raw) {
+                    $decoded = json_decode($raw, true);
+                    if (isset($decoded['output']['choices'][0]['message']['content'])) {
+                        $summaryMarkdown = trim($decoded['output']['choices'][0]['message']['content']);
+                        $usedModel       = 'Qwen AI (' . $selectedModel . ')';
+                    } elseif (isset($decoded['output']['text'])) {
+                        $summaryMarkdown = trim($decoded['output']['text']);
+                        $usedModel       = 'Qwen AI (' . $selectedModel . ')';
+                    }
+                }
+            }
+
+            // 3. Fallback: Free Cloud Qwen Gateway (4000 tokens)
             if (!$summaryMarkdown) {
                 $ch = curl_init('https://text.pollinations.ai/openai/chat/completions');
                 curl_setopt_array($ch, [
@@ -1408,9 +1454,12 @@ class Projects extends AdminController
                         'temperature' => 0.25,
                         'max_tokens'  => 4000,
                     ]),
-                    CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+                    CURLOPT_HTTPHEADER     => [
+                        'Content-Type: application/json',
+                        'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+                    ],
                     CURLOPT_TIMEOUT        => 45,
-                    CURLOPT_CONNECTTIMEOUT => 8,
+                    CURLOPT_CONNECTTIMEOUT => 6,
                     CURLOPT_SSL_VERIFYPEER => false,
                 ]);
 
@@ -1654,6 +1703,7 @@ class Projects extends AdminController
                     ['role' => 'user',   'content' => $userInstruction],
                 ],
                 'temperature' => 0.25,
+                'max_tokens'  => 4000,
                 'stream'      => true,
             ]);
 
@@ -1668,8 +1718,8 @@ class Projects extends AdminController
                         'Authorization: Bearer ' . $apiKey,
                         'Accept: text/event-stream',
                     ],
-                    CURLOPT_TIMEOUT        => 90,
-                    CURLOPT_CONNECTTIMEOUT => 10,
+                    CURLOPT_TIMEOUT        => 60,
+                    CURLOPT_CONNECTTIMEOUT => 5,
                     CURLOPT_SSL_VERIFYPEER => false,
                     CURLOPT_WRITEFUNCTION  => function ($ch, $data) use (&$fullSummary) {
                         $lines = explode("\n", $data);
@@ -1702,7 +1752,7 @@ class Projects extends AdminController
                 }
             }
 
-            // Fallback: Non-streaming call if SSE returned empty
+            // Fallback 1: Non-streaming call to Alibaba Cloud endpoints
             if (empty($fullSummary)) {
                 foreach ($endpoints as $ep) {
                     $ch = curl_init($ep);
@@ -1716,14 +1766,15 @@ class Projects extends AdminController
                                 ['role' => 'user',   'content' => $userInstruction],
                             ],
                             'temperature' => 0.25,
+                            'max_tokens'  => 4000,
                             'stream'      => false,
                         ]),
                         CURLOPT_HTTPHEADER     => [
                             'Content-Type: application/json',
                             'Authorization: Bearer ' . $apiKey,
                         ],
-                        CURLOPT_TIMEOUT        => 60,
-                        CURLOPT_CONNECTTIMEOUT => 10,
+                        CURLOPT_TIMEOUT        => 45,
+                        CURLOPT_CONNECTTIMEOUT => 5,
                         CURLOPT_SSL_VERIFYPEER => false,
                     ]);
 
@@ -1746,7 +1797,7 @@ class Projects extends AdminController
                 }
             }
 
-            // Fallback 2: Free Cloud Qwen Gateway (max 4000 tokens)
+            // Fallback 2: Free Cloud Qwen Gateway
             if (empty($fullSummary)) {
                 $ch = curl_init('https://text.pollinations.ai/openai/chat/completions');
                 curl_setopt_array($ch, [
@@ -1761,9 +1812,12 @@ class Projects extends AdminController
                         'temperature' => 0.25,
                         'max_tokens'  => 4000,
                     ]),
-                    CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
-                    CURLOPT_TIMEOUT        => 60,
-                    CURLOPT_CONNECTTIMEOUT => 10,
+                    CURLOPT_HTTPHEADER     => [
+                        'Content-Type: application/json',
+                        'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+                    ],
+                    CURLOPT_TIMEOUT        => 45,
+                    CURLOPT_CONNECTTIMEOUT => 6,
                     CURLOPT_SSL_VERIFYPEER => false,
                 ]);
 
