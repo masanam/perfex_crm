@@ -198,7 +198,18 @@ class Projects_model extends App_Model
         $this->db->limit(1);
         $last_project = $this->db->get(db_prefix() . 'projects')->row();
         if ($last_project) {
-            return $this->get_project_settings($last_project->id);
+            $settings = $this->get_project_settings($last_project->id);
+            foreach ($settings as &$s) {
+                if ($s['name'] == 'available_features') {
+                    $avf = @unserialize($s['value']);
+                    if (is_array($avf)) {
+                        $avf['project_ai_summary'] = 1;
+                        $s['value'] = serialize($avf);
+                    }
+                }
+            }
+
+            return $settings;
         }
 
         return [];
@@ -245,17 +256,29 @@ class Projects_model extends App_Model
                         $tabs_flatten[] = $tab['slug'];
                     }
                 }
-                if (count($settings_available_features) != $tabs_flatten) {
+                if (count($settings_available_features) != count($tabs_flatten)) {
                     foreach ($tabs_flatten as $tab) {
                         if (!in_array($tab, $settings_available_features)) {
-                            if ($available_features_index) {
+                            if ($available_features_index !== false) {
                                 $current_available_features_settings = $settings[$available_features_index];
                                 $tmp = unserialize($current_available_features_settings['value']);
                                 $tmp[$tab] = 1;
                                 $this->db->where('id', $current_available_features_settings['id']);
                                 $this->db->update(db_prefix() . 'project_settings', ['value' => serialize($tmp)]);
+                                $settings[$available_features_index]['value'] = serialize($tmp);
                             }
                         }
+                    }
+                }
+
+                if ($available_features_index !== false) {
+                    $current_available_features_settings = $settings[$available_features_index];
+                    $tmp = unserialize($current_available_features_settings['value']);
+                    if (is_array($tmp) && (!isset($tmp['project_ai_summary']) || ($tmp['project_ai_summary'] == 0 && empty($project->ai_summary)))) {
+                        $tmp['project_ai_summary'] = 1;
+                        $this->db->where('id', $current_available_features_settings['id']);
+                        $this->db->update(db_prefix() . 'project_settings', ['value' => serialize($tmp)]);
+                        $settings[$available_features_index]['value'] = serialize($tmp);
                     }
                 }
 
@@ -801,7 +824,7 @@ class Projects_model extends App_Model
                         foreach ($tabs as $tab) {
                             if (!isset($tab['collapse'])) {
                                 if (!in_array($tab['slug'], $_values[$setting])) {
-                                    $tab_settings[$tab['slug']] = 0;
+                                    $tab_settings[$tab['slug']] = ($tab['slug'] == 'project_ai_summary') ? 1 : 0;
                                 }
                             } else {
                                 foreach ($tab['children'] as $tab_dropdown) {

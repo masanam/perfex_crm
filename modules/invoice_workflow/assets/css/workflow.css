@@ -1,0 +1,227 @@
+/**
+ * Invoice Workflow Engine - Admin Custom Styles
+ */
+
+/* Workflow Panel Wrapper */
+.iwf-panel-box {
+    border-radius: 4px;
+    border: 1px solid #e4e8ec;
+    background: #ffffff;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.iwf-panel-header {
+    padding: 12px 15px;
+    border-bottom: 1px solid #edf2f7;
+    background: #f8fafc;
+    font-weight: 600;
+    font-size: 14px;
+    color: #2d3748;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.iwf-panel-body {
+    padding: 15px;
+}
+
+/* Badges */
+.iwf-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.iwf-badge-draft { background-color: #e2e8f0; color: #475569; }
+.iwf-badge-ap { background-color: #dbeafe; color: #1e40af; }
+.iwf-badge-tax { background-color: #fae8ff; color: #86198f; }
+.iwf-badge-treasury { background-color: #fef3c7; color: #92400e; }
+.iwf-badge-sm { background-color: #ffedd5; color: #9a3412; }
+.iwf-badge-gmf { background-color: #fce7f3; color: #9d174d; }
+.iwf-badge-approved { background-color: #dcfce7; color: #166534; }
+.iwf-badge-rejected { background-color: #fee2e2; color: #991b1b; }
+.iwf-badge-closed { background-color: #f1f5f9; color: #334155; }
+
+/* Action Buttons Group */
+.iwf-actions-wrapper {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+    margin-bottom: 15px;
+}
+
+.iwf-action-btn {
+    font-weight: 500;
+    transition: all 0.2s ease-in-out;
+}
+
+.iwf-action-btn i {
+    margin-right: 5px;
+}
+
+/* Timeline Layout */
+.iwf-timeline-container {
+    position: relative;
+    padding: 10px 0;
+    margin-top: 15px;
+}
+
+.iwf-timeline-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 20px;
+    width: 2px;
+    background: #e2e8f0;
+}
+
+.iwf-timeline-item {
+    position: relative;
+    margin-bottom: 20px;
+    padding-left: 50px;
+}
+
+.iwf-timeline-item:last-child {
+    margin-bottom: 0;
+}
+
+.iwf-timeline-badge {
+    position: absolute;
+    left: 8px;
+    top: 2px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 26px;
+    color: #fff;
+    font-size: 11px;
+    z-index: 1;
+    box-shadow: 0 0 0 3px #ffffff;
+}
+
+.iwf-bg-submit { background-color: #3b82f6; }
+.iwf-bg-approve { background-color: #22c55e; }
+.iwf-bg-reject { background-color: #ef4444; }
+.iwf-bg-request_change { background-color: #f59e0b; }
+.iwf-bg-delegate { background-color: #8b5cf6; }
+.iwf-bg-pay { background-color: #10b981; }
+.iwf-bg-close { background-color: #64748b; }
+.iwf-bg-default { background-color: #94a3b8; }
+
+.iwf-timeline-content {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 12px 15px;
+    position: relative;
+}
+
+.iwf-timeline-content::before {
+    content: '';
+    position: absolute;
+    top: 8px;
+    left: -7px;
+    width: 12px;
+    height: 12px;
+    background: #f8fafc;
+    border-left: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+    transform: rotate(45deg);
+}
+
+.iwf-timeline-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.iwf-timeline-user {
+    font-weight: 600;
+    font-size: 13px;
+    color: #1e293b;
+}
+
+.iwf-timeline-role {
+    font-size: 11px;
+    color: #64748b;
+    font-weight: normal;
+    margin-left: 5px;
+}
+
+.iwf-timeline-date {
+    font-size: 11px;
+    color: #94a3b8;
+}
+
+.iwf-timeline-action-title {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: #334155;
+}
+
+.iwf-timeline-comment {
+    font-size: 13px;
+    color: #334155;
+    background: #ffffff;
+    padding: 8px 12px;
+    border-radius: 4px;
+    border-left: 3px solid #cbd5e1;
+    margin-top: 6px;
+    word-break: break-word;
+}
+
+.iwf-comment-internal {
+    background: #fffbe6;
+    border-left-color: #ffe58f;
+}
+
+.iwf-comment-internal-tag {
+    font-size: 10px;
+    background: #faad14;
+    color: #fff;
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-left: 6px;
+    text-transform: uppercase;
+}
+
+/* Dashboard Stat Cards */
+.iwf-stat-card {
+    background: #ffffff;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.iwf-stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.iwf-stat-number {
+    font-size: 24px;
+    font-weight: 700;
+    color: #0f172a;
+    line-height: 1.2;
+}
+
+.iwf-stat-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: #64748b;
+    text-transform: uppercase;
+    margin-top: 4px;
+}

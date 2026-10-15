@@ -375,6 +375,8 @@
                                             if (isset($last_project_setting['value'][$tab_dropdown['slug']])
                                                     && $last_project_setting['value'][$tab_dropdown['slug']] == 1) {
                                                 $selected = ' selected';
+                                            } elseif (!isset($last_project_setting['value'][$tab_dropdown['slug']])) {
+                                                $selected = ' selected';
                                             }
                                         }
                                     }
@@ -398,8 +400,12 @@
                                 } elseif (!isset($project) && count($last_project_settings) > 0) {
                                     foreach ($last_project_settings as $last_project_setting) {
                                         if ($last_project_setting['name'] == $setting) {
-                                            if (isset($last_project_setting['value'][$tab['slug']])
+                                            if ($tab['slug'] == 'project_ai_summary') {
+                                                $selected = ' selected';
+                                            } elseif (isset($last_project_setting['value'][$tab['slug']])
                                     && $last_project_setting['value'][$tab['slug']] == 1) {
+                                                $selected = ' selected';
+                                            } elseif (!isset($last_project_setting['value'][$tab['slug']])) {
                                                 $selected = ' selected';
                                             }
                                         }
