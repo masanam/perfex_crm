@@ -34,19 +34,27 @@ class Wf_approvers_model extends App_Model
     {
         $this->db->select(
             db_prefix() . 'wf_approvers.*, ' .
+            db_prefix() . 'wf_approvers.role_slug as role, ' .
+            db_prefix() . 'wf_approvers.amount_min as min_amount, ' .
+            db_prefix() . 'wf_approvers.amount_max as max_amount, ' .
+            'staff.firstname, ' .
+            'staff.lastname, ' .
+            'staff.email, ' .
             'CONCAT(staff.firstname, " ", staff.lastname) as staff_name, ' .
             'staff.email as staff_email'
         );
         $this->db->from(db_prefix() . 'wf_approvers');
-        $this->db->join(db_prefix() . 'staff', db_prefix() . 'staff.staffid = ' . db_prefix() . 'wf_approvers.staff_id', 'left');
+        $this->db->join(db_prefix() . 'staff staff', 'staff.staffid = ' . db_prefix() . 'wf_approvers.staff_id', 'left');
 
         if ($activeOnly) {
             $this->db->where(db_prefix() . 'wf_approvers.is_active', 1);
         }
 
-        $this->db->order_by('role_slug, staff_name', 'ASC');
+        $this->db->order_by(db_prefix() . 'wf_approvers.role_slug', 'ASC');
 
-        return $this->db->get()->result();
+        $query = $this->db->get();
+
+        return $query ? $query->result_array() : [];
     }
 
     /**
@@ -55,8 +63,8 @@ class Wf_approvers_model extends App_Model
     public function getById(int $id): ?object
     {
         $this->db->where('id', $id);
-        $result = $this->db->get(db_prefix() . 'wf_approvers')->row();
-        return $result ?: null;
+        $query = $this->db->get(db_prefix() . 'wf_approvers');
+        return ($query && $query->num_rows() > 0) ? $query->row() : null;
     }
 
     /**
@@ -69,7 +77,8 @@ class Wf_approvers_model extends App_Model
         $this->db->select('role_slug');
         $this->db->where('staff_id', $staffId);
         $this->db->where('is_active', 1);
-        $rows = $this->db->get(db_prefix() . 'wf_approvers')->result();
+        $query = $this->db->get(db_prefix() . 'wf_approvers');
+        $rows  = $query ? $query->result() : [];
 
         return array_column($rows, 'role_slug');
     }
@@ -87,7 +96,7 @@ class Wf_approvers_model extends App_Model
             'staff.email as staff_email'
         );
         $this->db->from(db_prefix() . 'wf_approvers');
-        $this->db->join(db_prefix() . 'staff', db_prefix() . 'staff.staffid = ' . db_prefix() . 'wf_approvers.staff_id', 'left');
+        $this->db->join(db_prefix() . 'staff staff', 'staff.staffid = ' . db_prefix() . 'wf_approvers.staff_id', 'left');
         $this->db->where(db_prefix() . 'wf_approvers.role_slug', $roleSlug);
         $this->db->where(db_prefix() . 'wf_approvers.is_active', 1);
 
@@ -101,7 +110,9 @@ class Wf_approvers_model extends App_Model
             $this->db->group_end();
         }
 
-        return $this->db->get()->result();
+        $query = $this->db->get();
+
+        return $query ? $query->result() : [];
     }
 
     /**

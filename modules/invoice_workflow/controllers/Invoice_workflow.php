@@ -38,12 +38,19 @@ class Invoice_workflow extends AdminController
         $actorId   = get_staff_user_id();
         $actorType = 'staff';
 
-        $data['title']           = _l('iwf_menu_workflow');
-        $data['stats']           = $this->iwf_model->getDashboardStats($actorId, $actorType);
-        $data['all_states']      = $this->iwf_fsm->getAllStates();
-        $data['stuck_invoices']  = $this->iwf_model->getStuckInvoices(
+        $stats = $this->iwf_model->getDashboardStats($actorId, $actorType);
+        $stuckInvoices = $this->iwf_model->getStuckInvoices(
             (int) get_option('iwf_overdue_action_days') ?: 2
         );
+
+        $data['title']                    = _l('iwf_menu_workflow');
+        $data['stats']                    = $stats;
+        $data['all_states']               = $this->iwf_fsm->getAllStates();
+        $data['stuck_invoices']           = $stuckInvoices;
+        $data['total_invoices']           = $stats['total'] ?? 0;
+        $data['state_summary']            = $stats['by_state'] ?? [];
+        $data['total_approvers_count']    = count($this->iwf_approvers->getAll(true));
+        $data['active_delegations_count'] = count($this->iwf_delegation->getAll(true));
 
         $this->load->view(IWF_MODULE_NAME . '/admin/dashboard', $data);
     }
@@ -205,16 +212,29 @@ class Invoice_workflow extends AdminController
      */
     public function approvers()
     {
-        if (staff_cant('manage_approvers', 'invoice_workflow')) {
+        if (staff_cant('manage_approvers', 'invoice_workflow') && staff_cant('view', 'invoice_workflow')) {
             access_denied('invoice_workflow');
         }
 
-        $data['title']     = _l('iwf_menu_approvers');
-        $data['approvers'] = $this->iwf_approvers->getAll(false);
-        $data['roles']     = Wf_approvers_model::VALID_ROLES;
-        $data['staff']     = $this->db->get(db_prefix() . 'staff')->result();
+        $this->load->model('staff_model');
+        $staff = $this->staff_model->get('', ['active' => 1]);
+
+        $data['title']         = _l('iwf_menu_approvers');
+        $data['approvers']     = $this->iwf_approvers->getAll(false);
+        $data['roles']         = $this->get_role_options();
+        $data['staff_members'] = $staff;
+        $data['staff']         = $staff;
+        $data['can_manage']    = !staff_cant('manage_approvers', 'invoice_workflow');
 
         $this->load->view(IWF_MODULE_NAME . '/admin/approvers/manage', $data);
+    }
+
+    /**
+     * Alias for save_approver
+     */
+    public function save_approver()
+    {
+        $this->approvers_save();
     }
 
     /**
@@ -223,28 +243,54 @@ class Invoice_workflow extends AdminController
      */
     public function approvers_save()
     {
-        if (!$this->input->is_ajax_request() || staff_cant('manage_approvers', 'invoice_workflow')) {
-            $this->output->set_status_header(403);
-            echo json_encode(['success' => false]);
-            return;
+        if (staff_cant('manage_approvers', 'invoice_workflow')) {
+            if ($this->input->is_ajax_request()) {
+                $this->output->set_status_header(403);
+                echo json_encode(['success' => false, 'message' => 'Access denied']);
+                return;
+            }
+            access_denied('invoice_workflow');
         }
 
-        $id   = (int) $this->input->post('id');
+        $id        = (int) $this->input->post('id');
+        $roleSlug  = $this->input->post('role', true) ?: $this->input->post('role_slug', true);
+        $minAmount = $this->input->post('min_amount') !== null ? $this->input->post('min_amount') : $this->input->post('amount_min');
+        $maxAmount = $this->input->post('max_amount') !== null ? $this->input->post('max_amount') : $this->input->post('amount_max');
+        $isActive  = $this->input->post('is_active') !== null ? (int) $this->input->post('is_active') : 1;
+
         $data = [
-            'staff_id'   => (int)    $this->input->post('staff_id'),
-            'role_slug'  => $this->input->post('role_slug', true),
-            'amount_min' => $this->input->post('amount_min'),
-            'amount_max' => $this->input->post('amount_max'),
-            'is_active'  => (int) $this->input->post('is_active'),
+            'staff_id'   => (int) $this->input->post('staff_id'),
+            'role_slug'  => $roleSlug,
+            'amount_min' => ($minAmount !== '' && $minAmount !== null) ? $minAmount : null,
+            'amount_max' => ($maxAmount !== '' && $maxAmount !== null) ? $maxAmount : null,
+            'is_active'  => $isActive,
             'notes'      => $this->input->post('notes', true),
         ];
 
         $result = $this->iwf_approvers->save($data, $id ?: null);
 
-        echo json_encode([
-            'success' => (bool) $result,
-            'id'      => is_int($result) ? $result : $id,
-        ]);
+        if ($this->input->is_ajax_request()) {
+            echo json_encode([
+                'success' => (bool) $result,
+                'id'      => is_int($result) ? $result : $id,
+            ]);
+            return;
+        }
+
+        if ($result) {
+            set_alert('success', _l('iwf_action_successful'));
+        } else {
+            set_alert('danger', _l('iwf_action_failed'));
+        }
+        redirect(admin_url('invoice_workflow/approvers'));
+    }
+
+    /**
+     * Alias for delete_approver
+     */
+    public function delete_approver(int $id = 0)
+    {
+        $this->approvers_delete($id);
     }
 
     /**
@@ -252,13 +298,46 @@ class Invoice_workflow extends AdminController
      */
     public function approvers_delete(int $id = 0)
     {
-        if (!$this->input->is_ajax_request() || staff_cant('manage_approvers', 'invoice_workflow')) {
-            $this->output->set_status_header(403);
-            echo json_encode(['success' => false]);
+        if (staff_cant('manage_approvers', 'invoice_workflow')) {
+            if ($this->input->is_ajax_request()) {
+                $this->output->set_status_header(403);
+                echo json_encode(['success' => false]);
+                return;
+            }
+            access_denied('invoice_workflow');
+        }
+
+        $success = $this->iwf_approvers->delete($id);
+
+        if ($this->input->is_ajax_request()) {
+            echo json_encode(['success' => (bool) $success]);
             return;
         }
 
-        echo json_encode(['success' => $this->iwf_approvers->delete($id)]);
+        if ($success) {
+            set_alert('success', 'Approver berhasil dihapus.');
+        } else {
+            set_alert('danger', 'Gagal menghapus approver.');
+        }
+        redirect(admin_url('invoice_workflow/approvers'));
+    }
+
+    /**
+     * GET/POST admin/invoice_workflow/toggle_approver/{id}
+     */
+    public function toggle_approver(int $id = 0)
+    {
+        if (staff_cant('manage_approvers', 'invoice_workflow')) {
+            access_denied('invoice_workflow');
+        }
+
+        $approver = $this->iwf_approvers->getById($id);
+        if ($approver) {
+            $newStatus = ((int)$approver->is_active === 1) ? 0 : 1;
+            $this->iwf_approvers->save(['is_active' => $newStatus], $id);
+            set_alert('success', 'Status approver berhasil diubah.');
+        }
+        redirect(admin_url('invoice_workflow/approvers'));
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -270,16 +349,29 @@ class Invoice_workflow extends AdminController
      */
     public function delegations()
     {
-        if (staff_cant('manage_delegations', 'invoice_workflow')) {
+        if (staff_cant('manage_delegations', 'invoice_workflow') && staff_cant('view', 'invoice_workflow')) {
             access_denied('invoice_workflow');
         }
 
-        $data['title']       = _l('iwf_menu_delegations');
-        $data['delegations'] = $this->iwf_delegation->getAll();
-        $data['roles']       = Wf_approvers_model::VALID_ROLES;
-        $data['staff']       = $this->db->get(db_prefix() . 'staff')->result();
+        $this->load->model('staff_model');
+        $staff = $this->staff_model->get('', ['active' => 1]);
+
+        $data['title']         = _l('iwf_menu_delegations');
+        $data['delegations']   = $this->iwf_delegation->getAll();
+        $data['roles']         = $this->get_role_options();
+        $data['staff_members'] = $staff;
+        $data['staff']         = $staff;
+        $data['can_manage']    = !staff_cant('manage_delegations', 'invoice_workflow');
 
         $this->load->view(IWF_MODULE_NAME . '/admin/delegations/manage', $data);
+    }
+
+    /**
+     * Alias for save_delegation
+     */
+    public function save_delegation()
+    {
+        $this->delegations_save();
     }
 
     /**
@@ -287,18 +379,25 @@ class Invoice_workflow extends AdminController
      */
     public function delegations_save()
     {
-        if (!$this->input->is_ajax_request() || staff_cant('manage_delegations', 'invoice_workflow')) {
-            $this->output->set_status_header(403);
-            echo json_encode(['success' => false]);
-            return;
+        if (staff_cant('manage_delegations', 'invoice_workflow')) {
+            if ($this->input->is_ajax_request()) {
+                $this->output->set_status_header(403);
+                echo json_encode(['success' => false, 'message' => 'Access denied']);
+                return;
+            }
+            access_denied('invoice_workflow');
         }
 
+        $roleSlug   = $this->input->post('role', true) ?: $this->input->post('role_slug', true);
+        $validFrom  = $this->input->post('start_date', true) ?: $this->input->post('valid_from', true);
+        $validUntil = $this->input->post('end_date', true) ?: $this->input->post('valid_until', true);
+
         $data = [
-            'delegator_id' => (int)    $this->input->post('delegator_id'),
-            'delegatee_id' => (int)    $this->input->post('delegatee_id'),
-            'role_slug'    => $this->input->post('role_slug', true),
-            'valid_from'   => $this->input->post('valid_from', true),
-            'valid_until'  => $this->input->post('valid_until', true),
+            'delegator_id' => (int) $this->input->post('delegator_id'),
+            'delegatee_id' => (int) $this->input->post('delegatee_id'),
+            'role_slug'    => $roleSlug,
+            'valid_from'   => $validFrom,
+            'valid_until'  => $validUntil,
             'reason'       => $this->input->post('reason', true),
             'is_active'    => 1,
         ];
@@ -306,10 +405,28 @@ class Invoice_workflow extends AdminController
         $id     = (int) $this->input->post('id');
         $result = $this->iwf_delegation->save($data, $id ?: null);
 
-        echo json_encode([
-            'success' => (bool) $result,
-            'id'      => is_int($result) ? $result : $id,
-        ]);
+        if ($this->input->is_ajax_request()) {
+            echo json_encode([
+                'success' => (bool) $result,
+                'id'      => is_int($result) ? $result : $id,
+            ]);
+            return;
+        }
+
+        if ($result) {
+            set_alert('success', _l('iwf_action_successful'));
+        } else {
+            set_alert('danger', _l('iwf_action_failed'));
+        }
+        redirect(admin_url('invoice_workflow/delegations'));
+    }
+
+    /**
+     * Alias for revoke_delegation
+     */
+    public function revoke_delegation(int $id = 0)
+    {
+        $this->delegations_revoke($id);
     }
 
     /**
@@ -317,13 +434,39 @@ class Invoice_workflow extends AdminController
      */
     public function delegations_revoke(int $id = 0)
     {
-        if (!$this->input->is_ajax_request() || staff_cant('manage_delegations', 'invoice_workflow')) {
-            $this->output->set_status_header(403);
-            echo json_encode(['success' => false]);
+        if (staff_cant('manage_delegations', 'invoice_workflow')) {
+            if ($this->input->is_ajax_request()) {
+                $this->output->set_status_header(403);
+                echo json_encode(['success' => false]);
+                return;
+            }
+            access_denied('invoice_workflow');
+        }
+
+        $success = $this->iwf_delegation->revoke($id);
+
+        if ($this->input->is_ajax_request()) {
+            echo json_encode(['success' => (bool) $success]);
             return;
         }
 
-        echo json_encode(['success' => $this->iwf_delegation->revoke($id)]);
+        if ($success) {
+            set_alert('success', 'Delegasi berhasil dibatalkan.');
+        } else {
+            set_alert('danger', 'Gagal membatalkan delegasi.');
+        }
+        redirect(admin_url('invoice_workflow/delegations'));
+    }
+
+    private function get_role_options(): array
+    {
+        return [
+            'ap_receiver'    => 'AP / Receiver',
+            'tax'            => 'Tax Verification',
+            'treasury'       => 'Treasury Verification',
+            'senior_manager' => 'Senior Manager',
+            'gm_finance'     => 'GM Finance',
+        ];
     }
 
     // ──────────────────────────────────────────────────────────────────────────

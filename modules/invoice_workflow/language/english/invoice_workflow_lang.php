@@ -106,3 +106,26 @@ $lang['iwf_delegation_revoke_confirm'] = 'Are you sure you want to revoke this d
 $lang['iwf_delegation_active']       = 'Active';
 $lang['iwf_delegation_expired']      = 'Expired';
 $lang['iwf_delegation_revoked']      = 'Revoked';
+
+// Management Views & Subtitles
+$lang['invoice_workflow']                = 'Invoice Workflow';
+$lang['iwf_manage_approvers']            = 'Manage Approvers';
+$lang['iwf_manage_approvers_subtitle']   = 'Configure staff approval authority for invoice workflow.';
+$lang['iwf_manage_delegations']          = 'Manage Delegations';
+$lang['iwf_manage_delegations_subtitle'] = 'Allocate temporary approval authority delegations.';
+$lang['iwf_add_approver']                = 'Add New Approver';
+$lang['iwf_add_delegation']              = 'Add New Delegation';
+
+// Dashboard & Stats
+$lang['iwf_dashboard_subtitle']          = 'Monitor multi-stage invoice approval workflow and audit trails.';
+$lang['iwf_stat_total_in_workflow']      = 'Total Invoices in Workflow';
+$lang['iwf_stat_stuck_invoices']         = 'Stuck / Overdue Invoices';
+$lang['iwf_stat_active_approvers']       = 'Active Approvers';
+$lang['iwf_stat_active_delegations']     = 'Active Delegations';
+$lang['iwf_state_distribution']          = 'Workflow State Distribution';
+$lang['iwf_stuck_invoices_table_title']  = 'Invoices Pending Beyond SLA Threshold';
+
+// Actions Feedback
+$lang['iwf_action_successful']           = 'Workflow action updated successfully.';
+$lang['iwf_action_failed']               = 'Failed to process workflow action: ';
+

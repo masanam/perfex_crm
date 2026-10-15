@@ -7,16 +7,18 @@
             <div class="col-md-12">
                 <div class="panel_s">
                     <div class="panel-body">
-                        <div class="flex justify-between items-center mbot15">
+                        <div class="tw-flex tw-justify-between tw-items-center mbot15">
                             <div>
                                 <h4 class="no-margin bold">
                                     <i class="fa fa-users menu-icon"></i> <?= _l('iwf_manage_approvers'); ?>
                                 </h4>
                                 <span class="text-muted"><?= _l('iwf_manage_approvers_subtitle'); ?></span>
                             </div>
-                            <button type="button" class="btn btn-info" data-toggle="modal" data-target="#iwf-add-approver-modal">
-                                <i class="fa fa-plus"></i> <?= _l('iwf_add_approver'); ?>
-                            </button>
+                            <?php if ($can_manage ?? true) { ?>
+                                <button type="button" class="btn btn-info" data-toggle="modal" data-target="#iwf-add-approver-modal">
+                                    <i class="fa fa-plus"></i> <?= _l('iwf_add_approver'); ?>
+                                </button>
+                            <?php } ?>
                         </div>
                         <hr class="hr-panel-heading" />
 
@@ -29,37 +31,54 @@
                                         <th>Min Amount (IDR)</th>
                                         <th>Max Amount (IDR)</th>
                                         <th>Status</th>
-                                        <th>Aksi</th>
+                                        <?php if ($can_manage ?? true) { ?>
+                                            <th>Aksi</th>
+                                        <?php } ?>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <?php if (!empty($approvers)) {
-                                        foreach ($approvers as $app) { ?>
+                                        foreach ($approvers as $app) { 
+                                            $appId       = is_array($app) ? ($app['id'] ?? '') : ($app->id ?? '');
+                                            $appStaffId  = is_array($app) ? ($app['staff_id'] ?? '') : ($app->staff_id ?? '');
+                                            $appFirst    = is_array($app) ? ($app['firstname'] ?? '') : ($app->firstname ?? '');
+                                            $appLast     = is_array($app) ? ($app['lastname'] ?? '') : ($app->lastname ?? '');
+                                            $appEmail    = is_array($app) ? ($app['email'] ?? $app['staff_email'] ?? '') : ($app->email ?? $app->staff_email ?? '');
+                                            $appRole     = is_array($app) ? ($app['role'] ?? $app['role_slug'] ?? '') : ($app->role ?? $app->role_slug ?? '');
+                                            $appMin      = is_array($app) ? ($app['min_amount'] ?? $app['amount_min'] ?? 0) : ($app->min_amount ?? $app->amount_min ?? 0);
+                                            $appMax      = is_array($app) ? ($app['max_amount'] ?? $app['amount_max'] ?? null) : ($app->max_amount ?? $app->amount_max ?? null);
+                                            $appIsActive = is_array($app) ? ($app['is_active'] ?? 0) : ($app->is_active ?? 0);
+                                            $fullName    = trim($appFirst . ' ' . $appLast);
+                                        ?>
                                             <tr>
                                                 <td class="bold">
-                                                    <a href="<?= admin_url('staff/member/' . $app['staff_id']); ?>" target="_blank">
-                                                        <?= html_escape($app['firstname'] . ' ' . $app['lastname']); ?>
+                                                    <a href="<?= admin_url('staff/member/' . $appStaffId); ?>" target="_blank">
+                                                        <?= html_escape($fullName ?: ('Staff #' . $appStaffId)); ?>
                                                     </a>
-                                                    <br><small class="text-muted"><?= html_escape($app['email']); ?></small>
+                                                    <?php if (!empty($appEmail)) { ?>
+                                                        <br><small class="text-muted"><?= html_escape($appEmail); ?></small>
+                                                    <?php } ?>
                                                 </td>
-                                                <td><span class="label label-default"><?= html_escape($app['role']); ?></span></td>
-                                                <td><?= number_format($app['min_amount'], 2); ?></td>
-                                                <td><?= $app['max_amount'] !== null ? number_format($app['max_amount'], 2) : 'Tanpa Batas'; ?></td>
+                                                <td><span class="label label-default"><?= html_escape($appRole); ?></span></td>
+                                                <td><?= number_format((float) $appMin, 2); ?></td>
+                                                <td><?= $appMax !== null && $appMax !== '' ? number_format((float) $appMax, 2) : 'Tanpa Batas'; ?></td>
                                                 <td>
-                                                    <?php if ($app['is_active'] == 1) { ?>
+                                                    <?php if ($appIsActive == 1) { ?>
                                                         <span class="label label-success">Aktif</span>
                                                     <?php } else { ?>
                                                         <span class="label label-danger">Non-aktif</span>
                                                     <?php } ?>
                                                 </td>
-                                                <td>
-                                                    <a href="<?= admin_url('invoice_workflow/toggle_approver/' . $app['id']); ?>" class="btn btn-default btn-xs" title="Toggle Aktif/Nonaktif">
-                                                        <i class="fa fa-power-off"></i>
-                                                    </a>
-                                                    <a href="<?= admin_url('invoice_workflow/delete_approver/' . $app['id']); ?>" class="btn btn-danger btn-xs _delete" title="Hapus">
-                                                        <i class="fa fa-trash"></i>
-                                                    </a>
-                                                </td>
+                                                <?php if ($can_manage ?? true) { ?>
+                                                    <td>
+                                                        <a href="<?= admin_url('invoice_workflow/toggle_approver/' . $appId); ?>" class="btn btn-default btn-xs" title="Toggle Aktif/Nonaktif">
+                                                            <i class="fa fa-power-off"></i>
+                                                        </a>
+                                                        <a href="<?= admin_url('invoice_workflow/delete_approver/' . $appId); ?>" class="btn btn-danger btn-xs _delete" title="Hapus">
+                                                            <i class="fa fa-trash"></i>
+                                                        </a>
+                                                    </td>
+                                                <?php } ?>
                                             </tr>
                                     <?php }
                                     } ?>
@@ -84,13 +103,22 @@
                 <h4 class="modal-title"><?= _l('iwf_add_approver'); ?></h4>
             </div>
             <div class="modal-body">
+                <?php 
+                $staff_list = !empty($staff_members) ? $staff_members : (!empty($staff) ? $staff : []);
+                ?>
                 <div class="form-group">
                     <label for="staff_id" class="control-label">Pilih Staff <span class="text-danger">*</span></label>
-                    <select name="staff_id" id="staff_id" class="selectpicker" data-width="100%" data-live-search="true" required>
+                    <select name="staff_id" id="staff_id" class="selectpicker" data-width="100%" data-live-search="true" title="-- Pilih Staff --" required>
                         <option value=""></option>
-                        <?php foreach ($staff_members as $staff) { ?>
-                            <option value="<?= $staff['staffid']; ?>">
-                                <?= html_escape($staff['firstname'] . ' ' . $staff['lastname'] . ' (' . $staff['email'] . ')'); ?>
+                        <?php foreach ($staff_list as $st) { 
+                            $sId    = is_array($st) ? ($st['staffid'] ?? '') : ($st->staffid ?? '');
+                            $sFirst = is_array($st) ? ($st['firstname'] ?? '') : ($st->firstname ?? '');
+                            $sLast  = is_array($st) ? ($st['lastname'] ?? '') : ($st->lastname ?? '');
+                            $sEmail = is_array($st) ? ($st['email'] ?? '') : ($st->email ?? '');
+                            $sName  = trim($sFirst . ' ' . $sLast);
+                        ?>
+                            <option value="<?= $sId; ?>" data-subtext="<?= html_escape($sEmail); ?>">
+                                <?= html_escape($sName . ($sEmail ? ' (' . $sEmail . ')' : '')); ?>
                             </option>
                         <?php } ?>
                     </select>
@@ -131,3 +159,14 @@
 </div>
 
 <?php init_tail(); ?>
+<script>
+$(function() {
+    $('#iwf-add-approver-modal').on('shown.bs.modal', function () {
+        if (typeof init_selectpicker === 'function') {
+            init_selectpicker();
+        } else {
+            $('.selectpicker').selectpicker('refresh');
+        }
+    });
+});
+</script>
