@@ -208,6 +208,7 @@ class Projects_model extends App_Model
                     }
                 }
             }
+            unset($s);
 
             return $settings;
         }
